@@ -15,6 +15,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.channels.Pipe;
+import java.util.Arrays;
 
 /**
  * Created by tansinan on 5/4/17.
@@ -31,7 +32,7 @@ class BackendWrapperVpnService extends VpnService {
     FileOutputStream commandStream = null;
     FileInputStream responseStream = null;
     Thread backendThread = null;
-    protected static final String VPN_ADDRESS = "10.0.0.2";
+    protected static final String VPN_ADDRESS = "183.172.114.27";
     protected static final String VPN_ROUTE = "0.0.0.0";
     public static final String BROADCAST_VPN_STATE = "com.tinytangent.droidover6.VPN_STATE";
     protected ParcelFileDescriptor vpnInterface = null;
@@ -43,6 +44,7 @@ class BackendWrapperVpnService extends VpnService {
         vpnInterface = new Builder()
                 .addAddress(VPN_ADDRESS, 32)
                 .addRoute(VPN_ROUTE, 0)
+                .addRoute("2400:cb00:2049:1::adf5:3b47", 128)
                 .setSession(getString(R.string.app_name))
                 .setConfigureIntent(pendingIntent)
                 .establish();
@@ -63,7 +65,7 @@ class BackendWrapperVpnService extends VpnService {
         LocalBroadcastManager.getInstance(this).sendBroadcast(new Intent(BROADCAST_VPN_STATE).putExtra("running", true));
         commandStream = new FileOutputStream(commandWriteFd.getFileDescriptor());
         responseStream = new FileInputStream(responseReadFd.getFileDescriptor());
-        backendThread = new Thread(new BackendWrapperThread(0, commandReadFd.getFd(), responseWriteFd.getFd()));
+        backendThread = new Thread(new BackendWrapperThread(vpnInterface.getFd(), commandReadFd.getFd(), responseWriteFd.getFd()));
         backendThread.start();
         Log.d("Backend", "Backend started!");
         new CountDownTimer(10000, 1000) {
@@ -80,10 +82,10 @@ class BackendWrapperVpnService extends VpnService {
                 catch (IOException e) {
                     return;
                 }
-                byte[] response = new byte[20];
+                byte[] response = new byte[200];
                 try {
                     int temp = responseStream.read(response);
-                    Log.d("Backend", new String(response));
+                    Log.d("Backend", new String(Arrays.copyOfRange(response, 0, temp)));
                     Log.d("Backend", "" + temp);
                 }
                 catch (IOException e) {

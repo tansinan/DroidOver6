@@ -2,16 +2,174 @@
 // Created by tansinan on 5/4/17.
 //
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
+#include <android/log.h>
 
-int backend_main(int tunDeviceFd, int commandPipeFd, int responsePipeFd)
+#include <sys/socket.h>
+#include <sys/epoll.h>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <netdb.h>
+
+//TODO: allow to set remote address and port in GUI.
+const static int REMOTE_PORT = 13872;
+const static char *REMOTE_ADDR = "2402:f000:2:7001:3427:366d:d32f:5e56";
+const static char *REMOTE_ADDR4 = "183.172.114.27";
+const static int IP_PACKET_MAX_SIZE = 65536;
+
+static void fail(int commandPipeFd, int responsePipeFd, const char *errorMessage) {
+    unsigned char command;
+    for (;;) {
+        int ret = read(commandPipeFd, &command, 1);
+        write(responsePipeFd, "err", 3);
+    }
+}
+
+static int connectTo4Over6Server(int commandPipeFd, int responsePipeFd) {
+    struct sockaddr_in6 serv_addr;
+    //struct sockaddr_in serv_addr;
+    struct hostent *server;
+    int sockfd = socket(AF_INET6, SOCK_STREAM, 0);
+    //int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0)
+        fail(commandPipeFd, responsePipeFd, "Cannot create IPv6 socket.");
+
+    //Sockets Layer Call: gethostbyname2()
+    server = gethostbyname2(REMOTE_ADDR, AF_INET6);
+    if (server == NULL)
+        fail(commandPipeFd, responsePipeFd, "Host address resolution failed.");
+
+    memset((char *) &serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin6_flowinfo = 0;
+    serv_addr.sin6_family = AF_INET6;
+    memmove((char *) &serv_addr.sin6_addr.s6_addr, (char *) server->h_addr, server->h_length);
+    serv_addr.sin6_port = htons(REMOTE_PORT);
+
+    //Sockets Layer Call: connect()
+    if (connect(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) != 0)
+        fail(commandPipeFd, responsePipeFd, "Cannot connect to remote server.");
+    return sockfd;
+}
+
+static int createEpollFd(int commandPipeFd, int responsePipeFd) {
+    int epollFd = epoll_create(0);
+    if (epollFd == -1) {
+        fail(commandPipeFd, responsePipeFd, "Cannot initialize I/O multiplex.");
+    }
+    return epollFd;
+}
+
+static int addToEpollFd(int epollFd, int *fds, int count) {
+    for (int i = 0; i < count; i++) {
+        int flags = fcntl(fds[i], F_GETFL, 0);
+        if (flags == -1) {
+            return 0;
+        }
+        flags |= O_NONBLOCK;
+        if (fcntl(fds[i], F_SETFL, flags)) {
+            return 0;
+        }
+        struct epoll_event event;
+        event.data.fd = fds[i];
+        event.events = EPOLLIN | EPOLLOUT;
+        if (epoll_ctl(epollFd, EPOLL_CTL_ADD, fds[i], &event) == -1) {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+static int readAllDataToBuffer(int fd, char* buffer, int* bufferUsed)
 {
-    char a;
-    char *s = "Hello world@";
-    int s_len = strlen(s) + 1;
+    //TODO: Avoid buffer overflow.
+    const ssize_t READ_SIZE = 1024;
+    for(;;)
+    {
+        int ret = read(fd, buffer + *bufferUsed, READ_SIZE);
+        __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "Read %d", ret);
+        if(ret <= 0)
+            return ret;
+        (*bufferUsed) += ret;
+    }
+}
+
+static void sendIpPacketBuffer(int fd, char *buffer, int *bufferUsed) {
     for(;;) {
-        int temp = read(commandPipeFd, &a, 1);
-        if(temp == 1)
-            write(responsePipeFd, s, s_len);
+        if((*bufferUsed) < 4) {
+            return;
+        }
+        int firstPacketSize = buffer[2] * 256 + buffer[3];
+        if ((*bufferUsed) < firstPacketSize) {
+            return;
+        }
+        // TODO: if the return value is positive while less than firstPacketSize, this won't work.
+        int temp;
+        if((temp = write(fd, buffer, firstPacketSize)) < firstPacketSize)
+        {
+            __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "fail %d", temp);
+        }
+        memmove(buffer, buffer + firstPacketSize, (*bufferUsed) - firstPacketSize);
+        (*bufferUsed) -= firstPacketSize;
+    }
+}
+
+int backend_main(int tunDeviceFd, int commandPipeFd, int responsePipeFd) {
+    int remoteSocketFd = connectTo4Over6Server(commandPipeFd, responsePipeFd);
+    int epollFd = createEpollFd(commandPipeFd, responsePipeFd);
+    int fds[3] = {tunDeviceFd, commandPipeFd, remoteSocketFd};
+    if (!addToEpollFd(epollFd, fds, 3)) {
+        fail(commandPipeFd, responsePipeFd, "Cannot initialize I/O multiplex.");
+    }
+
+    char *tunDeviceBuffer = new char[IP_PACKET_MAX_SIZE * 2];
+    int tunDeviceBufferUsed = 0;
+    char *over6PacketBuffer = new char[IP_PACKET_MAX_SIZE * 2];
+    int over6PacketBufferUsed = 0;
+
+    epoll_event *events = (epoll_event *) calloc(3, sizeof(epoll_event));
+
+    // Event loop
+    for(;;) {
+        int eventCount = epoll_wait(epollFd, events, 3, -1);
+        for (int i = 0; i < eventCount; i++) {
+            if ((events[i].events & EPOLLERR) ||
+                (events[i].events & EPOLLHUP) ||
+                (!(events[i].events & (EPOLLIN | EPOLLOUT))))
+            {
+                /* An error has occured on this fd, or the socket is not
+                   ready for reading (why were we notified then?) */
+                __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "epoll error\n");
+                close (events[i].data.fd);
+                continue;
+            }
+
+            if (events[i].events & EPOLLIN) {
+                if (events[i].data.fd == commandPipeFd) {
+                    char c;
+                    int temp = read(commandPipeFd, &c, 1);
+                    if (temp == 1) {
+                        write(responsePipeFd, "Alive", 5);
+                    }
+                } else if (events[i].data.fd == tunDeviceFd) {
+                    readAllDataToBuffer(tunDeviceFd, tunDeviceBuffer, &tunDeviceBufferUsed);
+                    //sendIpPacketBuffer(remoteSocketFd, tunDeviceBuffer, &tunDeviceBufferUsed);
+                } else if (events[i].data.fd == remoteSocketFd) {
+                    // This assumes that ip packet is sent one by one via tcp stream.
+                    // TODO: Need to follow 4over6 specification.
+                    readAllDataToBuffer(remoteSocketFd, over6PacketBuffer, &over6PacketBufferUsed);
+                }
+            }
+            else if(events[i].events & EPOLLOUT) {
+                if (events[i].data.fd == commandPipeFd) {
+                    sendIpPacketBuffer(tunDeviceFd, over6PacketBuffer, &over6PacketBufferUsed);
+                }
+                else if (events[i].data.fd == remoteSocketFd) {
+                    sendIpPacketBuffer(remoteSocketFd, tunDeviceBuffer, &tunDeviceBufferUsed);
+                }
+            }
+        }
     }
 }
