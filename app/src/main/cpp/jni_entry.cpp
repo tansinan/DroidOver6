@@ -19,6 +19,11 @@ extern "C"
 JNIEXPORT jint JNICALL
 Java_com_tinytangent_droidover6_BackendWrapperThread_jniEntry(
         JNIEnv* env,
-        jobject /* this */, jint tunDeviceFd, jint commandReadFd, jint responseWriteFd) {
-    return backend_main(tunDeviceFd, commandReadFd, responseWriteFd);
+        jobject /* this */,
+        jstring hostName, jint port,
+        jint tunDeviceFd, jint commandReadFd, jint responseWriteFd) {
+    const char *hostNameCharArray = env->GetStringUTFChars(hostName, 0);
+    int ret = backend_main(hostNameCharArray, port, tunDeviceFd, commandReadFd, responseWriteFd);
+    env->ReleaseStringUTFChars(hostName, hostNameCharArray);
+    return ret;
 }

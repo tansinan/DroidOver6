@@ -40,14 +40,6 @@ class BackendWrapperVpnService extends VpnService {
 
     @Override
     public void onCreate() {
-        super.onCreate();
-        vpnInterface = new Builder()
-                .addAddress(VPN_ADDRESS, 32)
-                .addRoute(VPN_ROUTE, 0)
-                .addRoute("2400:cb00:2049:1::adf5:3b47", 128)
-                .setSession(getString(R.string.app_name))
-                .setConfigureIntent(pendingIntent)
-                .establish();
         try {
             ParcelFileDescriptor[] pipeFds = ParcelFileDescriptor.createPipe();
             commandWriteFd = pipeFds[1];
@@ -62,10 +54,29 @@ class BackendWrapperVpnService extends VpnService {
         catch (IOException e) {
             return;
         }
+    }
+
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        super.onCreate();
+        vpnInterface = new Builder()
+                .addAddress(VPN_ADDRESS, 32)
+                .addRoute(VPN_ROUTE, 0)
+                .addRoute("2400:cb00:2049:1::adf5:3b47", 128)
+                .setSession(getString(R.string.app_name))
+                .setConfigureIntent(pendingIntent)
+                .establish();
         LocalBroadcastManager.getInstance(this).sendBroadcast(new Intent(BROADCAST_VPN_STATE).putExtra("running", true));
         commandStream = new FileOutputStream(commandWriteFd.getFileDescriptor());
         responseStream = new FileInputStream(responseReadFd.getFileDescriptor());
-        backendThread = new Thread(new BackendWrapperThread(vpnInterface.getFd(), commandReadFd.getFd(), responseWriteFd.getFd()));
+        String hostName = intent.getStringExtra("host_name");
+        int port = intent.getIntExtra("port", 0);
+        backendThread = new Thread(new BackendWrapperThread(
+            hostName, port,
+            vpnInterface.getFd(),
+            commandReadFd.getFd(),
+            responseWriteFd.getFd()
+        ));
         backendThread.start();
         Log.d("Backend", "Backend started!");
         new CountDownTimer(10000, 1000) {
@@ -96,11 +107,7 @@ class BackendWrapperVpnService extends VpnService {
             public void onFinish() {
             }
         }.start();
-    }
-
-    @Override
-    public int onStartCommand(Intent intent, int flags, int startId) {
-        return START_STICKY;
+        return START_REDELIVER_INTENT;
     }
 
     @Override

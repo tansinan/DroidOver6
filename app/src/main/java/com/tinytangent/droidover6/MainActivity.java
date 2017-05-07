@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.VpnService;
+import android.support.design.widget.TextInputEditText;
 import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -19,7 +20,8 @@ public class MainActivity extends AppCompatActivity {
 
     protected static final int VPN_REQUEST_CODE = 0x100;
     protected Button buttonChangeConnectionState = null;
-    protected Button buttonStopVPN = null;
+    protected TextInputEditText inputHostName = null;
+    protected TextInputEditText inputPort = null;
 
     protected BroadcastReceiver vpnStateReceiver = new BroadcastReceiver()
     {
@@ -39,6 +41,8 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         buttonChangeConnectionState = (Button)findViewById(R.id.button_change_connection_state);
+        inputHostName = (TextInputEditText)findViewById(R.id.edit_text_host_name);
+        inputPort = (TextInputEditText)findViewById(R.id.edit_text_port);
         buttonChangeConnectionState.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -64,9 +68,15 @@ public class MainActivity extends AppCompatActivity {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == VPN_REQUEST_CODE && resultCode == RESULT_OK)
         {
-            Toast.makeText(this, "onActivityResult!!", Toast.LENGTH_SHORT).show();
-            startService(new Intent(this, BackendWrapperVpnService.class));
+            startVPNService();
         }
+    }
+
+    protected void startVPNService() {
+        Intent intent = new Intent(this, BackendWrapperVpnService.class);
+        intent.putExtra("host_name", inputHostName.getText().toString());
+        intent.putExtra("port", Integer.parseInt(inputPort.getText().toString()));
+        startService(intent);
     }
 
     protected void onButtonStopVPN() {

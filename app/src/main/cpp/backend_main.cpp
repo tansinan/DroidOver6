@@ -13,9 +13,6 @@
 #include <netinet/in.h>
 #include <netdb.h>
 
-//TODO: allow to set remote address and port in GUI.
-const static int REMOTE_PORT = 13872;
-const static char *REMOTE_ADDR = "2402:f000:5:8701:f400:6eab:6633:5b0a";
 const static int IP_PACKET_MAX_SIZE = 65536;
 
 static void fail(int commandPipeFd, int responsePipeFd, const char *errorMessage) {
@@ -26,17 +23,14 @@ static void fail(int commandPipeFd, int responsePipeFd, const char *errorMessage
     }
 }
 
-static int connectTo4Over6Server(int commandPipeFd, int responsePipeFd) {
+static int connectTo4Over6Server(const char *hostName, int port, int commandPipeFd, int responsePipeFd) {
     struct sockaddr_in6 serv_addr;
-    //struct sockaddr_in serv_addr;
     struct hostent *server;
-    int sockfd = socket(AF_INET6, SOCK_STREAM, 0);
-    //int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd < 0)
+    int socketFd = socket(AF_INET6, SOCK_STREAM, 0);
+    if (socketFd < 0)
         fail(commandPipeFd, responsePipeFd, "Cannot create IPv6 socket.");
 
-    //Sockets Layer Call: gethostbyname2()
-    server = gethostbyname2(REMOTE_ADDR, AF_INET6);
+    server = gethostbyname2(hostName, AF_INET6);
     if (server == NULL)
         fail(commandPipeFd, responsePipeFd, "Host address resolution failed.");
 
@@ -44,12 +38,12 @@ static int connectTo4Over6Server(int commandPipeFd, int responsePipeFd) {
     serv_addr.sin6_flowinfo = 0;
     serv_addr.sin6_family = AF_INET6;
     memmove((char *) &serv_addr.sin6_addr.s6_addr, (char *) server->h_addr, server->h_length);
-    serv_addr.sin6_port = htons(REMOTE_PORT);
+    serv_addr.sin6_port = htons((unsigned short)port);
 
     //Sockets Layer Call: connect()
-    if (connect(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) != 0)
+    if (connect(socketFd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) != 0)
         fail(commandPipeFd, responsePipeFd, "Cannot connect to remote server.");
-    return sockfd;
+    return socketFd;
 }
 
 static int createEpollFd(int commandPipeFd, int responsePipeFd) {
@@ -122,8 +116,10 @@ static void sendIpPacketBuffer(int fd, char *buffer, int *bufferUsed) {
     }
 }
 
-int backend_main(int tunDeviceFd, int commandPipeFd, int responsePipeFd) {
-    int remoteSocketFd = connectTo4Over6Server(commandPipeFd, responsePipeFd);
+int backend_main(const char* hostName, int port,
+                 int tunDeviceFd, int commandPipeFd, int responsePipeFd) {
+    __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "%s:%d", hostName, port);
+    int remoteSocketFd = connectTo4Over6Server(hostName, port, commandPipeFd, responsePipeFd);
     int epollFd = createEpollFd(commandPipeFd, responsePipeFd);
     int fds[3] = {tunDeviceFd, commandPipeFd, remoteSocketFd};
     if (!addToEpollFd(epollFd, fds, 3)) {

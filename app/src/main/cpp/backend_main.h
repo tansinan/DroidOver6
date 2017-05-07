@@ -5,6 +5,7 @@
 #ifndef DROIDOVER6_BACKEND_MAIN_H
 #define DROIDOVER6_BACKEND_MAIN_H
 
-int backend_main(int tunDeviceFd, int commandPipeFd, int responsePipeFd);
+int backend_main(const char* hostName, int port,
+                 int tunDeviceFd, int commandPipeFd, int responsePipeFd);
 
 #endif //DROIDOVER6_BACKEND_MAIN_H
