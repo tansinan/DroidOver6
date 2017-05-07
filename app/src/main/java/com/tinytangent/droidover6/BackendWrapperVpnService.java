@@ -32,7 +32,7 @@ class BackendWrapperVpnService extends VpnService {
     FileOutputStream commandStream = null;
     FileInputStream responseStream = null;
     Thread backendThread = null;
-    protected static final String VPN_ADDRESS = "183.172.114.27";
+    protected static final String VPN_ADDRESS = "10.10.10.2";
     protected static final String VPN_ROUTE = "0.0.0.0";
     public static final String BROADCAST_VPN_STATE = "com.tinytangent.droidover6.VPN_STATE";
     protected ParcelFileDescriptor vpnInterface = null;
