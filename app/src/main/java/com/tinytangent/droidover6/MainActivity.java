@@ -18,7 +18,7 @@ import static android.widget.Toast.LENGTH_SHORT;
 public class MainActivity extends AppCompatActivity {
 
     protected static final int VPN_REQUEST_CODE = 0x100;
-    protected Button buttonStartVPN = null;
+    protected Button buttonChangeConnectionState = null;
     protected Button buttonStopVPN = null;
 
     protected BroadcastReceiver vpnStateReceiver = new BroadcastReceiver()
@@ -38,18 +38,11 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        buttonStartVPN = (Button)findViewById(R.id.button_connect);
-        buttonStopVPN = (Button)findViewById(R.id.button_disconnect);
-        buttonStartVPN.setOnClickListener(new View.OnClickListener() {
+        buttonChangeConnectionState = (Button)findViewById(R.id.button_change_connection_state);
+        buttonChangeConnectionState.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 onButtonStartVPN();
-            }
-        });
-        buttonStopVPN.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                onButtonStopVPN();
             }
         });
         LocalBroadcastManager.getInstance(this).registerReceiver(vpnStateReceiver,
