@@ -24,21 +24,23 @@ public class MainActivity extends AppCompatActivity {
     protected Button buttonChangeConnectionState = null;
     protected TextInputEditText inputHostName = null;
     protected TextInputEditText inputPort = null;
-
-    protected Handler vpnStateHandler = new Handler(Looper.getMainLooper()) {
-
-    };
+    protected static String defaultHostName = "2402:f000:5:8701:f400:6eab:6633:5b0a";
+    protected static String defaultPortText = "13872";
 
     protected BroadcastReceiver vpnStateReceiver = new BroadcastReceiver()
     {
         @Override
         public void onReceive(Context context, Intent intent)
         {
-            if (Over6VpnService.BROADCAST_VPN_STATE.equals(intent.getAction()))
+            if(intent.getAction().equals(Over6VpnService.BROADCAST_VPN_STATE))
+            {
+                Toast.makeText(MainActivity.this, intent.getStringExtra("data"), LENGTH_SHORT).show();
+            }
+            /*if (Over6VpnService.BROADCAST_VPN_STATE.equals(intent.getAction()))
             {
                 if (intent.getBooleanExtra("running", false))
                     ;
-            }
+            }*/
         }
     };
 
@@ -67,6 +69,8 @@ public class MainActivity extends AppCompatActivity {
         buttonChangeConnectionState = (Button)findViewById(R.id.button_change_connection_state);
         inputHostName = (TextInputEditText)findViewById(R.id.edit_text_host_name);
         inputPort = (TextInputEditText)findViewById(R.id.edit_text_port);
+        inputHostName.setText(defaultHostName);
+        inputPort.setText(defaultPortText);
         buttonChangeConnectionState.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {

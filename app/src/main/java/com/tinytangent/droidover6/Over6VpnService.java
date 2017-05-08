@@ -14,6 +14,10 @@ import android.util.Log;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
 import java.nio.channels.Pipe;
 import java.util.Arrays;
 
@@ -22,7 +26,10 @@ import java.util.Arrays;
  */
 
 public class Over6VpnService extends VpnService {
-    protected static byte BACKEND_IPC_COMMAND_STATUS = 0;
+    protected static byte BACKEND_IPC_COMMAND_STATUS = (byte)0x00;
+    protected static byte BACKEND_IPC_COMMAND_STATISTICS = (byte)0x01;
+    protected static byte BACKEND_IPC_COMMAND_CONFIGURATION = (byte)0x02;
+    protected static byte BACKEND_IPC_COMMAND_SET_TUNNEL_FD = (byte)0x03;
     protected static byte BACKEND_IPC_COMMAND_TERMINATE = (byte)0xFF;
     ParcelFileDescriptor commandReadFd;
     ParcelFileDescriptor commandWriteFd;
@@ -34,9 +41,7 @@ public class Over6VpnService extends VpnService {
     FileOutputStream commandStream = null;
     FileInputStream responseStream = null;
     Thread backendThread = null;
-    protected static final String VPN_ADDRESS = "10.10.10.2";
-    protected static final String VPN_ROUTE = "0.0.0.0";
-    public static final String BROADCAST_VPN_STATE = "com.tinytangent.droidover6.VPN_STATE";
+    public static final String BROADCAST_VPN_STATE = "com.tinytangent.droidover6.STATUS_CHANGED";
     protected ParcelFileDescriptor vpnInterface = null;
     protected PendingIntent pendingIntent;
     static protected Over6VpnService instance = null;
@@ -67,47 +72,72 @@ public class Over6VpnService extends VpnService {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         super.onCreate();
-        vpnInterface = new Builder()
-                .addAddress(VPN_ADDRESS, 32)
-                .addRoute(VPN_ROUTE, 0)
-                .addRoute("2400:cb00:2049:1::adf5:3b47", 128)
-                .setSession(getString(R.string.app_name))
-                .setConfigureIntent(pendingIntent)
-                .establish();
-        LocalBroadcastManager.getInstance(this).sendBroadcast(new Intent(BROADCAST_VPN_STATE).putExtra("running", true));
+        //LocalBroadcastManager.getInstance(this).sendBroadcast(new Intent(BROADCAST_VPN_STATE).putExtra("running", true));
         commandStream = new FileOutputStream(commandWriteFd.getFileDescriptor());
         responseStream = new FileInputStream(responseReadFd.getFileDescriptor());
         String hostName = intent.getStringExtra("host_name");
         int port = intent.getIntExtra("port", 0);
         backendThread = new Thread(new BackendWrapperThread(
             hostName, port,
-            vpnInterface.getFd(),
+            -1,
             commandReadFd.getFd(),
             responseWriteFd.getFd()
         ));
         backendThread.start();
         Log.d("Backend", "Backend started!");
-        new CountDownTimer(10000, 1000) {
+        new CountDownTimer(100000, 1000) {
             int i = 0;
 
             public void onTick(long millisUntilFinished) {
-                i++;
-                Log.d("Backend", "" + i);
-                try {
-                    commandStream.write(0);
-                    commandStream.flush();
+
+                if(vpnInterface == null)
+                {
+                    byte[] data = new byte[20];
+                    try {
+                        commandStream.write(BACKEND_IPC_COMMAND_CONFIGURATION);
+                        responseStream.read(data);
+                    }
+                    catch (IOException e) {
+                        return;
+                    }
+                    try {
+                        InetAddress address = InetAddress.getByAddress(Arrays.copyOfRange(data, 0, 4));
+                        InetAddress dns = InetAddress.getByAddress(Arrays.copyOfRange(data, 8, 12));
+                        vpnInterface = new Builder()
+                                .addAddress(address, 24)
+                                .addDnsServer(dns)
+                                .addRoute("0.0.0.0", 0)
+                                .addRoute("2400:cb00:2049:1::adf5:3b47", 128)
+                                .setSession(getString(R.string.app_name))
+                                .setConfigureIntent(pendingIntent)
+                                .establish();
+                        commandStream.write(BACKEND_IPC_COMMAND_SET_TUNNEL_FD);
+                        commandStream.write(ByteBuffer.allocate(4).putInt(vpnInterface.getFd()).array());
+                    } catch (UnknownHostException e) {
+                        //This is impossible.
+                    } catch (IOException e) {
+
+                    }
                 }
-                catch (IOException e) {
-                    return;
-                }
-                byte[] response = new byte[200];
-                try {
-                    int temp = responseStream.read(response);
-                    Log.d("Backend", new String(Arrays.copyOfRange(response, 0, temp)));
-                    Log.d("Backend", "" + temp);
-                }
-                catch (IOException e) {
-                    return;
+                else {
+                    try {
+                        commandStream.write(0);
+                        commandStream.flush();
+                    } catch (IOException e) {
+                        return;
+                    }
+                    byte[] response = new byte[200];
+                    try {
+                        int temp = 0;
+                        //int temp = responseStream.read(response);
+                        Log.d("Backend", new String(Arrays.copyOfRange(response, 0, temp)));
+                        Log.d("Backend", "" + temp);
+                        Intent intent = new Intent(BROADCAST_VPN_STATE);
+                        intent.putExtra("data", "Notice me " + i + "!");
+                        LocalBroadcastManager.getInstance(Over6VpnService.this).sendBroadcast(intent);
+                    } catch (Exception e) {
+                        return;
+                    }
                 }
             }
 

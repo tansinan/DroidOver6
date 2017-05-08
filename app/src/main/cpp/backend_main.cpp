@@ -6,12 +6,15 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <android/log.h>
+#include <errno.h>
 
 #include <sys/socket.h>
 #include <sys/epoll.h>
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <netdb.h>
+
+#include "frontend_ipc.h"
 
 const static int IP_PACKET_MAX_SIZE = 65536;
 
@@ -43,6 +46,7 @@ static int connectTo4Over6Server(const char *hostName, int port) {
 
     //Sockets Layer Call: connect()
     ret = connect(socketFd, (struct sockaddr *) &serv_addr, sizeof(serv_addr));
+    int errcode = errno;
     if(ret < 0)
         return ret;
     return socketFd;
@@ -120,14 +124,15 @@ static void sendIpPacketBuffer(int fd, char *buffer, int *bufferUsed) {
 
 int backend_main(const char* hostName, int port,
                  int tunDeviceFd, int commandPipeFd, int responsePipeFd) {
-    __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "%s:%d", hostName, port);
+    __android_log_print(ANDROID_LOG_VERBOSE,
+                        "4over6 backend", "Entering backend_main @ %s:%d", hostName, port);
     do {
         int remoteSocketFd = connectTo4Over6Server(hostName, port);
         if (remoteSocketFd < 0)
             break;
         int epollFd = createEpollFd(commandPipeFd, responsePipeFd);
-        int fds[3] = {tunDeviceFd, commandPipeFd, remoteSocketFd};
-        if (!addToEpollFd(epollFd, fds, 3)) {
+        int fds[2] = {commandPipeFd, remoteSocketFd};
+        if (!addToEpollFd(epollFd, fds, 2)) {
             fail(commandPipeFd, responsePipeFd, "Cannot initialize I/O multiplex.");
         }
 
@@ -140,6 +145,7 @@ int backend_main(const char* hostName, int port,
 
         // Event loop
         for (;;) {
+            bool encounterError = false;
             int eventCount = epoll_wait(epollFd, events, 3, -1);
             for (int i = 0; i < eventCount; i++) {
                 if ((events[i].events & EPOLLERR) ||
@@ -155,16 +161,15 @@ int backend_main(const char* hostName, int port,
 
                 if (events[i].events & EPOLLIN) {
                     if (events[i].data.fd == commandPipeFd) {
-                        char c;
-                        int temp = read(commandPipeFd, &c, 1);
-                        if (temp == 1) {
-                            write(responsePipeFd, "Alive", 5);
+                        int ret = handle_frontend_command(commandPipeFd, responsePipeFd);
+                        if(ret == BACKEND_IPC_COMMAND_SET_TUNNEL_FD)
+                        {
+                            addToEpollFd(epollFd, &tunFd, 1);
+                            tunDeviceFd = tunFd;
                         }
                     } else if (events[i].data.fd == tunDeviceFd) {
-                        __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "TUN read\n");
                         readAllDataToBuffer(tunDeviceFd, tunDeviceBuffer, &tunDeviceBufferUsed);
                     } else if (events[i].data.fd == remoteSocketFd) {
-                        __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "REMOTE read\n");
                         // This assumes that ip packet is sent one by one via tcp stream.
                         // TODO: Need to follow 4over6 specification.
                         readAllDataToBuffer(remoteSocketFd, over6PacketBuffer,
@@ -173,27 +178,16 @@ int backend_main(const char* hostName, int port,
                     }
                 } else if (events[i].events & EPOLLOUT) {
                     if (events[i].data.fd == tunDeviceFd && over6PacketBufferUsed > 0) {
-                        __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "TUN write\n");
                         sendIpPacketBuffer(tunDeviceFd, over6PacketBuffer, &over6PacketBufferUsed);
                     } else if (events[i].data.fd == remoteSocketFd && tunDeviceBufferUsed > 0) {
-                        __android_log_print(ANDROID_LOG_VERBOSE, "backend thread",
-                                            "REMOTE write\n");
                         sendIpPacketBuffer(remoteSocketFd, tunDeviceBuffer, &tunDeviceBufferUsed);
                     }
                 }
             }
         }
     } while(0);
-    for (;;) {
-        char command;
-        int ret = read(commandPipeFd, &command, 1);
-        if(ret != 1) continue;
-        if(command == 0xFF) {
-            break;
-        }
-        else {
-            write(responsePipeFd, "Alive", 5);
-        }
-    }
+    while(handle_frontend_command(commandPipeFd, responsePipeFd) != 0xFF);
+    __android_log_print(ANDROID_LOG_VERBOSE,
+                        "4over6 backend", "Leaving backend_main", hostName, port);
     return 0;
 }
