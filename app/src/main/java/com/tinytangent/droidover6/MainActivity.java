@@ -5,36 +5,60 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.VpnService;
+import android.os.Handler;
+import android.os.Looper;
 import android.support.design.widget.TextInputEditText;
 import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
-import android.widget.TextView;
 import android.widget.Toast;
 
 import static android.widget.Toast.LENGTH_SHORT;
 
 public class MainActivity extends AppCompatActivity {
 
+    boolean uiModeForVpnStarted = false;
     protected static final int VPN_REQUEST_CODE = 0x100;
     protected Button buttonChangeConnectionState = null;
     protected TextInputEditText inputHostName = null;
     protected TextInputEditText inputPort = null;
+
+    protected Handler vpnStateHandler = new Handler(Looper.getMainLooper()) {
+
+    };
 
     protected BroadcastReceiver vpnStateReceiver = new BroadcastReceiver()
     {
         @Override
         public void onReceive(Context context, Intent intent)
         {
-            if (BackendWrapperVpnService.BROADCAST_VPN_STATE.equals(intent.getAction()))
+            if (Over6VpnService.BROADCAST_VPN_STATE.equals(intent.getAction()))
             {
                 if (intent.getBooleanExtra("running", false))
                     ;
             }
         }
     };
+
+    protected void updateGUI()
+    {
+        if(ServiceUtil.isServiceRunning(this, Over6VpnService.class))
+        {
+            uiModeForVpnStarted = true;
+            buttonChangeConnectionState.setText("Disconnect");
+            inputHostName.setEnabled(false);
+            inputPort.setEnabled(false);
+        }
+        else
+        {
+            uiModeForVpnStarted = false;
+            buttonChangeConnectionState.setText("Connect");
+            inputHostName.setEnabled(true);
+            inputPort.setEnabled(true);
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -46,20 +70,24 @@ public class MainActivity extends AppCompatActivity {
         buttonChangeConnectionState.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                onButtonStartVPN();
+                if(uiModeForVpnStarted) {
+                    stopVPNService();
+                }
+                else {
+                    prepareStartVPN();
+                }
             }
         });
         LocalBroadcastManager.getInstance(this).registerReceiver(vpnStateReceiver,
-                new IntentFilter(BackendWrapperVpnService.BROADCAST_VPN_STATE));
+                new IntentFilter(Over6VpnService.BROADCAST_VPN_STATE));
     }
 
-    protected void onButtonStartVPN() {
-        Toast.makeText(this, stringFromJNI(), LENGTH_SHORT).show();
-        Intent vpnIntent = VpnService.prepare(this);
-        if (vpnIntent != null)
-            startActivityForResult(vpnIntent, VPN_REQUEST_CODE);
-        else
-            onActivityResult(VPN_REQUEST_CODE, RESULT_OK, null);
+
+    @Override
+    public void onResume()
+    {
+        super.onResume();
+        updateGUI();
     }
 
     @Override
@@ -72,15 +100,36 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    protected void prepareStartVPN() {
+        Toast.makeText(this, stringFromJNI(), LENGTH_SHORT).show();
+        Intent vpnIntent = VpnService.prepare(this);
+        if (vpnIntent != null)
+            startActivityForResult(vpnIntent, VPN_REQUEST_CODE);
+        else
+            onActivityResult(VPN_REQUEST_CODE, RESULT_OK, null);
+    }
+
     protected void startVPNService() {
-        Intent intent = new Intent(this, BackendWrapperVpnService.class);
+        if(ServiceUtil.isServiceRunning(this, Over6VpnService.class))
+        {
+            updateGUI();
+            return;
+        }
+        Intent intent = new Intent(this, Over6VpnService.class);
         intent.putExtra("host_name", inputHostName.getText().toString());
         intent.putExtra("port", Integer.parseInt(inputPort.getText().toString()));
         startService(intent);
+        updateGUI();
     }
 
-    protected void onButtonStopVPN() {
-
+    protected void stopVPNService() {
+        if(!ServiceUtil.isServiceRunning(this, Over6VpnService.class))
+        {
+            updateGUI();
+            return;
+        }
+        Over6VpnService.getInstance().reliableStop();
+        updateGUI();
     }
 
     /**

@@ -18,7 +18,7 @@
         </activity>
 
         <service
-            android:name=".BackendWrapperVpnService"
+            android:name=".Over6VpnService"
             android:enabled="true"
             android:exported="true"
             android:permission="android.permission.BIND_VPN_SERVICE">

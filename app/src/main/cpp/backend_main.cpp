@@ -23,16 +23,17 @@ static void fail(int commandPipeFd, int responsePipeFd, const char *errorMessage
     }
 }
 
-static int connectTo4Over6Server(const char *hostName, int port, int commandPipeFd, int responsePipeFd) {
+static int connectTo4Over6Server(const char *hostName, int port) {
+    int ret = 0;
     struct sockaddr_in6 serv_addr;
     struct hostent *server;
     int socketFd = socket(AF_INET6, SOCK_STREAM, 0);
     if (socketFd < 0)
-        fail(commandPipeFd, responsePipeFd, "Cannot create IPv6 socket.");
+        return socketFd;
 
     server = gethostbyname2(hostName, AF_INET6);
     if (server == NULL)
-        fail(commandPipeFd, responsePipeFd, "Host address resolution failed.");
+        return -1;
 
     memset((char *) &serv_addr, 0, sizeof(serv_addr));
     serv_addr.sin6_flowinfo = 0;
@@ -41,8 +42,9 @@ static int connectTo4Over6Server(const char *hostName, int port, int commandPipe
     serv_addr.sin6_port = htons((unsigned short)port);
 
     //Sockets Layer Call: connect()
-    if (connect(socketFd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) != 0)
-        fail(commandPipeFd, responsePipeFd, "Cannot connect to remote server.");
+    ret = connect(socketFd, (struct sockaddr *) &serv_addr, sizeof(serv_addr));
+    if(ret < 0)
+        return ret;
     return socketFd;
 }
 
@@ -119,64 +121,79 @@ static void sendIpPacketBuffer(int fd, char *buffer, int *bufferUsed) {
 int backend_main(const char* hostName, int port,
                  int tunDeviceFd, int commandPipeFd, int responsePipeFd) {
     __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "%s:%d", hostName, port);
-    int remoteSocketFd = connectTo4Over6Server(hostName, port, commandPipeFd, responsePipeFd);
-    int epollFd = createEpollFd(commandPipeFd, responsePipeFd);
-    int fds[3] = {tunDeviceFd, commandPipeFd, remoteSocketFd};
-    if (!addToEpollFd(epollFd, fds, 3)) {
-        fail(commandPipeFd, responsePipeFd, "Cannot initialize I/O multiplex.");
-    }
+    do {
+        int remoteSocketFd = connectTo4Over6Server(hostName, port);
+        if (remoteSocketFd < 0)
+            break;
+        int epollFd = createEpollFd(commandPipeFd, responsePipeFd);
+        int fds[3] = {tunDeviceFd, commandPipeFd, remoteSocketFd};
+        if (!addToEpollFd(epollFd, fds, 3)) {
+            fail(commandPipeFd, responsePipeFd, "Cannot initialize I/O multiplex.");
+        }
 
-    char *tunDeviceBuffer = new char[IP_PACKET_MAX_SIZE * 100];
-    int tunDeviceBufferUsed = 0;
-    char *over6PacketBuffer = new char[IP_PACKET_MAX_SIZE * 100];
-    int over6PacketBufferUsed = 0;
+        char *tunDeviceBuffer = new char[IP_PACKET_MAX_SIZE * 100];
+        int tunDeviceBufferUsed = 0;
+        char *over6PacketBuffer = new char[IP_PACKET_MAX_SIZE * 100];
+        int over6PacketBufferUsed = 0;
 
-    epoll_event *events = (epoll_event *) calloc(3, sizeof(epoll_event));
+        epoll_event *events = (epoll_event *) calloc(3, sizeof(epoll_event));
 
-    // Event loop
-    for(;;) {
-        int eventCount = epoll_wait(epollFd, events, 3, -1);
-        for (int i = 0; i < eventCount; i++) {
-            if ((events[i].events & EPOLLERR) ||
-                (events[i].events & EPOLLHUP) ||
-                (!(events[i].events & (EPOLLIN | EPOLLOUT))))
-            {
-                /* An error has occured on this fd, or the socket is not
-                   ready for reading (why were we notified then?) */
-                __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "epoll error\n");
-                close (events[i].data.fd);
-                exit(0);
-                //continue;
-            }
+        // Event loop
+        for (;;) {
+            int eventCount = epoll_wait(epollFd, events, 3, -1);
+            for (int i = 0; i < eventCount; i++) {
+                if ((events[i].events & EPOLLERR) ||
+                    (events[i].events & EPOLLHUP) ||
+                    (!(events[i].events & (EPOLLIN | EPOLLOUT)))) {
+                    /* An error has occured on this fd, or the socket is not
+                       ready for reading (why were we notified then?) */
+                    __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "epoll error\n");
+                    close(events[i].data.fd);
+                    exit(0);
+                    //continue;
+                }
 
-            if (events[i].events & EPOLLIN) {
-                if (events[i].data.fd == commandPipeFd) {
-                    char c;
-                    int temp = read(commandPipeFd, &c, 1);
-                    if (temp == 1) {
-                        write(responsePipeFd, "Alive", 5);
+                if (events[i].events & EPOLLIN) {
+                    if (events[i].data.fd == commandPipeFd) {
+                        char c;
+                        int temp = read(commandPipeFd, &c, 1);
+                        if (temp == 1) {
+                            write(responsePipeFd, "Alive", 5);
+                        }
+                    } else if (events[i].data.fd == tunDeviceFd) {
+                        __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "TUN read\n");
+                        readAllDataToBuffer(tunDeviceFd, tunDeviceBuffer, &tunDeviceBufferUsed);
+                    } else if (events[i].data.fd == remoteSocketFd) {
+                        __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "REMOTE read\n");
+                        // This assumes that ip packet is sent one by one via tcp stream.
+                        // TODO: Need to follow 4over6 specification.
+                        readAllDataToBuffer(remoteSocketFd, over6PacketBuffer,
+                                            &over6PacketBufferUsed);
+                        sendIpPacketBuffer(tunDeviceFd, over6PacketBuffer, &over6PacketBufferUsed);
                     }
-                } else if (events[i].data.fd == tunDeviceFd) {
-                    __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "TUN read\n");
-                    readAllDataToBuffer(tunDeviceFd, tunDeviceBuffer, &tunDeviceBufferUsed);
-                } else if (events[i].data.fd == remoteSocketFd) {
-                    __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "REMOTE read\n");
-                    // This assumes that ip packet is sent one by one via tcp stream.
-                    // TODO: Need to follow 4over6 specification.
-                    readAllDataToBuffer(remoteSocketFd, over6PacketBuffer, &over6PacketBufferUsed);
-                    sendIpPacketBuffer(tunDeviceFd, over6PacketBuffer, &over6PacketBufferUsed);
-                }
-            }
-            else if(events[i].events & EPOLLOUT) {
-                if (events[i].data.fd == tunDeviceFd && over6PacketBufferUsed > 0) {
-                    __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "TUN write\n");
-                    sendIpPacketBuffer(tunDeviceFd, over6PacketBuffer, &over6PacketBufferUsed);
-                }
-                else if (events[i].data.fd == remoteSocketFd && tunDeviceBufferUsed > 0) {
-                    __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "REMOTE write\n");
-                    sendIpPacketBuffer(remoteSocketFd, tunDeviceBuffer, &tunDeviceBufferUsed);
+                } else if (events[i].events & EPOLLOUT) {
+                    if (events[i].data.fd == tunDeviceFd && over6PacketBufferUsed > 0) {
+                        __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "TUN write\n");
+                        sendIpPacketBuffer(tunDeviceFd, over6PacketBuffer, &over6PacketBufferUsed);
+                    } else if (events[i].data.fd == remoteSocketFd && tunDeviceBufferUsed > 0) {
+                        __android_log_print(ANDROID_LOG_VERBOSE, "backend thread",
+                                            "REMOTE write\n");
+                        sendIpPacketBuffer(remoteSocketFd, tunDeviceBuffer, &tunDeviceBufferUsed);
+                    }
                 }
             }
         }
+    } while(0);
+    for (;;) {
+        char command;
+        int ret = read(commandPipeFd, &command, 1);
+        if(ret != 1) continue;
+        if(command == 0xFF) {
+            break;
+        }
+        else {
+            write(responsePipeFd, "Alive", 5);
+        }
     }
+    return 0;
 }

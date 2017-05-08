@@ -21,7 +21,9 @@ import java.util.Arrays;
  * Created by tansinan on 5/4/17.
  */
 
-class BackendWrapperVpnService extends VpnService {
+public class Over6VpnService extends VpnService {
+    protected static byte BACKEND_IPC_COMMAND_STATUS = 0;
+    protected static byte BACKEND_IPC_COMMAND_TERMINATE = (byte)0xFF;
     ParcelFileDescriptor commandReadFd;
     ParcelFileDescriptor commandWriteFd;
     ParcelFileDescriptor responseReadFd;
@@ -37,9 +39,15 @@ class BackendWrapperVpnService extends VpnService {
     public static final String BROADCAST_VPN_STATE = "com.tinytangent.droidover6.VPN_STATE";
     protected ParcelFileDescriptor vpnInterface = null;
     protected PendingIntent pendingIntent;
+    static protected Over6VpnService instance = null;
+    static Over6VpnService getInstance()
+    {
+        return instance;
+    }
 
     @Override
     public void onCreate() {
+        instance = this;
         try {
             ParcelFileDescriptor[] pipeFds = ParcelFileDescriptor.createPipe();
             commandWriteFd = pipeFds[1];
@@ -85,9 +93,8 @@ class BackendWrapperVpnService extends VpnService {
             public void onTick(long millisUntilFinished) {
                 i++;
                 Log.d("Backend", "" + i);
-                byte b = (byte)i;
                 try {
-                    commandStream.write(b);
+                    commandStream.write(0);
                     commandStream.flush();
                 }
                 catch (IOException e) {
@@ -113,5 +120,15 @@ class BackendWrapperVpnService extends VpnService {
     @Override
     public void onDestroy() {
         super.onDestroy();
+    }
+
+    public void reliableStop() {
+        try {
+            commandStream.write(BACKEND_IPC_COMMAND_TERMINATE);
+            Over6VpnService.getInstance().vpnInterface.close();
+            Over6VpnService.getInstance().commandStream.close();
+            Over6VpnService.getInstance().responseStream.close();
+        } catch (Exception e){}
+        Over6VpnService.getInstance().stopSelf();
     }
 }
