@@ -4,6 +4,7 @@
 
 #include <unistd.h>
 #include <stdlib.h>
+#include <android/log.h>
 
 const static int IP_PACKET_MAX_SIZE = 65536;
 
@@ -36,29 +37,29 @@ void communication_set_tun_fd(int tunFd)
     tunDeviceFd = tunFd;
 }
 
-static void sendIpPacketBuffer(int fd, char *buffer, int *bufferUsed) {
+int sendIpPacketBuffer(int fd, char *buffer, int *bufferUsed) {
     // TODO: Use a circular buffer is much better
     for(;;) {
         if((*bufferUsed) < 4) {
-            return;
+            return 0;
         }
         int firstPacketSize = buffer[2] * 256 + buffer[3];
         if ((*bufferUsed) < firstPacketSize) {
-            return;
+            return 0;
         }
         if(firstPacketSize < 20 || ((buffer[0] & 0xF0) != 0x40))
         {
             /*__android_log_print(ANDROID_LOG_VERBOSE, "backend thread",
                                 "Invalid Packet. size = %d "
                                         "first byte = %02x", firstPacketSize, bufferUsed[0]);*/
-            exit(1);
+            return -1;
         }
         // TODO: if the return value is positive while less than firstPacketSize, this won't work.
         int temp;
         if((temp = write(fd, buffer, firstPacketSize)) < firstPacketSize)
         {
             //__android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "fail %d", temp);
-            exit(1);
+            return -1;
         }
         memmove(buffer, buffer + firstPacketSize, (*bufferUsed) - firstPacketSize);
         (*bufferUsed) -= firstPacketSize;

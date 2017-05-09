@@ -108,6 +108,11 @@ int backend_main(const char *hostName, int port,
                             addToEpollFd(epollFd, &tunFd, 1);
                             tunDeviceFd = tunFd;
                         }
+                        else if(ret == BACKEND_IPC_COMMAND_TERMINATE)
+                        {
+                            encounterError = true;
+                            break;
+                        }
                     } else if (events[i].data.fd == tunDeviceFd) {
                         communication_handle_tun_read();
                     } else if (events[i].data.fd == remoteSocketFd) {
