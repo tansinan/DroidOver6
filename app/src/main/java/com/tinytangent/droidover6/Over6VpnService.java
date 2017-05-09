@@ -95,9 +95,16 @@ public class Over6VpnService extends VpnService {
                     byte[] data = new byte[20];
                     try {
                         commandStream.write(BACKEND_IPC_COMMAND_CONFIGURATION);
-                        responseStream.read(data);
+                        int bytesRead = 0;
+                        while(bytesRead < data.length)
+                        {
+                            int ret = responseStream.read(data, bytesRead, data.length - bytesRead);
+                            if(ret > 0)
+                                bytesRead += ret;
+                        }
                     }
                     catch (IOException e) {
+                        Log.d("DroidOver6 VPN", "IO error");
                         return;
                     }
                     try {
@@ -115,7 +122,10 @@ public class Over6VpnService extends VpnService {
                         commandStream.write(ByteBuffer.allocate(4).putInt(vpnInterface.getFd()).array());
                     } catch (UnknownHostException e) {
                         //This is impossible.
-                    } catch (IOException e) {
+                    } catch (IllegalArgumentException e) {
+                        //TODO: handle illegal IP/DNS Configuration.
+                    }
+                    catch (IOException e) {
 
                     }
                 }
