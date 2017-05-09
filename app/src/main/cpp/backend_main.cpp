@@ -14,17 +14,8 @@
 #include <netinet/in.h>
 #include <netdb.h>
 
+#include "communication.h"
 #include "frontend_ipc.h"
-
-const static int IP_PACKET_MAX_SIZE = 65536;
-
-static void fail(int commandPipeFd, int responsePipeFd, const char *errorMessage) {
-    unsigned char command;
-    for (;;) {
-        int ret = read(commandPipeFd, &command, 1);
-        write(responsePipeFd, "err", 3);
-    }
-}
 
 static int connectTo4Over6Server(const char *hostName, int port) {
     int ret = 0;
@@ -42,21 +33,17 @@ static int connectTo4Over6Server(const char *hostName, int port) {
     serv_addr.sin6_flowinfo = 0;
     serv_addr.sin6_family = AF_INET6;
     memmove((char *) &serv_addr.sin6_addr.s6_addr, (char *) server->h_addr, server->h_length);
-    serv_addr.sin6_port = htons((unsigned short)port);
+    serv_addr.sin6_port = htons((unsigned short) port);
 
-    //Sockets Layer Call: connect()
+    // TODO: Connect is still blocking.
     ret = connect(socketFd, (struct sockaddr *) &serv_addr, sizeof(serv_addr));
-    int errcode = errno;
-    if(ret < 0)
+    if (ret < 0)
         return ret;
     return socketFd;
 }
 
 static int createEpollFd(int commandPipeFd, int responsePipeFd) {
     int epollFd = epoll_create(1);
-    if (epollFd == -1) {
-        fail(commandPipeFd, responsePipeFd, "Cannot initialize I/O multiplex.");
-    }
     return epollFd;
 }
 
@@ -81,48 +68,7 @@ static int addToEpollFd(int epollFd, int *fds, int count) {
     return 1;
 }
 
-static int readAllDataToBuffer(int fd, char* buffer, int* bufferUsed, int limit = 2 * IP_PACKET_MAX_SIZE)
-{
-    const ssize_t READ_SIZE = IP_PACKET_MAX_SIZE;
-    while((*bufferUsed) < limit - READ_SIZE)
-    {
-        int ret = read(fd, buffer + *bufferUsed, READ_SIZE);
-        if(ret <= 0)
-            return ret;
-        (*bufferUsed) += ret;
-        return 1;
-    }
-}
-
-static void sendIpPacketBuffer(int fd, char *buffer, int *bufferUsed) {
-    for(;;) {
-        if((*bufferUsed) < 4) {
-            return;
-        }
-        int firstPacketSize = buffer[2] * 256 + buffer[3];
-        if ((*bufferUsed) < firstPacketSize) {
-            return;
-        }
-        if(firstPacketSize < 20 || ((buffer[0] & 0xF0) != 0x40))
-        {
-            __android_log_print(ANDROID_LOG_VERBOSE, "backend thread",
-                                "Invalid Packet. size = %d "
-                                "first byte = %02x", firstPacketSize, bufferUsed[0]);
-            exit(0);
-        }
-        // TODO: if the return value is positive while less than firstPacketSize, this won't work.
-        int temp;
-        if((temp = write(fd, buffer, firstPacketSize)) < firstPacketSize)
-        {
-            __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "fail %d", temp);
-            exit(0);
-        }
-        memmove(buffer, buffer + firstPacketSize, (*bufferUsed) - firstPacketSize);
-        (*bufferUsed) -= firstPacketSize;
-    }
-}
-
-int backend_main(const char* hostName, int port,
+int backend_main(const char *hostName, int port,
                  int tunDeviceFd, int commandPipeFd, int responsePipeFd) {
     __android_log_print(ANDROID_LOG_VERBOSE,
                         "4over6 backend", "Entering backend_main @ %s:%d", hostName, port);
@@ -131,19 +77,18 @@ int backend_main(const char* hostName, int port,
         if (remoteSocketFd < 0)
             break;
         int epollFd = createEpollFd(commandPipeFd, responsePipeFd);
+        if(epollFd < 0)
+            break;
         int fds[2] = {commandPipeFd, remoteSocketFd};
         if (!addToEpollFd(epollFd, fds, 2)) {
-            fail(commandPipeFd, responsePipeFd, "Cannot initialize I/O multiplex.");
+            break;
         }
 
-        char *tunDeviceBuffer = new char[IP_PACKET_MAX_SIZE * 100];
-        int tunDeviceBufferUsed = 0;
-        char *over6PacketBuffer = new char[IP_PACKET_MAX_SIZE * 100];
-        int over6PacketBufferUsed = 0;
-
+        communication_init(remoteSocketFd);
         epoll_event *events = (epoll_event *) calloc(3, sizeof(epoll_event));
 
         // Event loop
+        // TODO: To sent heartbeat packet, an timer fd needs to be created.
         for (;;) {
             bool encounterError = false;
             int eventCount = epoll_wait(epollFd, events, 3, -1);
@@ -151,42 +96,37 @@ int backend_main(const char* hostName, int port,
                 if ((events[i].events & EPOLLERR) ||
                     (events[i].events & EPOLLHUP) ||
                     (!(events[i].events & (EPOLLIN | EPOLLOUT)))) {
-                    /* An error has occured on this fd, or the socket is not
-                       ready for reading (why were we notified then?) */
                     __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "epoll error\n");
-                    close(events[i].data.fd);
-                    exit(0);
-                    //continue;
+                    encounterError = true;
+                    break;
                 }
 
                 if (events[i].events & EPOLLIN) {
                     if (events[i].data.fd == commandPipeFd) {
                         int ret = handle_frontend_command(commandPipeFd, responsePipeFd);
-                        if(ret == BACKEND_IPC_COMMAND_SET_TUNNEL_FD)
-                        {
+                        if (ret == BACKEND_IPC_COMMAND_SET_TUNNEL_FD) {
                             addToEpollFd(epollFd, &tunFd, 1);
                             tunDeviceFd = tunFd;
                         }
                     } else if (events[i].data.fd == tunDeviceFd) {
-                        readAllDataToBuffer(tunDeviceFd, tunDeviceBuffer, &tunDeviceBufferUsed);
+                        communication_handle_tun_read();
                     } else if (events[i].data.fd == remoteSocketFd) {
-                        // This assumes that ip packet is sent one by one via tcp stream.
-                        // TODO: Need to follow 4over6 specification.
-                        readAllDataToBuffer(remoteSocketFd, over6PacketBuffer,
-                                            &over6PacketBufferUsed);
-                        sendIpPacketBuffer(tunDeviceFd, over6PacketBuffer, &over6PacketBufferUsed);
+                        communication_handle_4over6_socket_read();
                     }
                 } else if (events[i].events & EPOLLOUT) {
-                    if (events[i].data.fd == tunDeviceFd && over6PacketBufferUsed > 0) {
-                        sendIpPacketBuffer(tunDeviceFd, over6PacketBuffer, &over6PacketBufferUsed);
-                    } else if (events[i].data.fd == remoteSocketFd && tunDeviceBufferUsed > 0) {
-                        sendIpPacketBuffer(remoteSocketFd, tunDeviceBuffer, &tunDeviceBufferUsed);
+                    if (events[i].data.fd == tunDeviceFd) {
+                        communication_handle_tun_write();
+                    } else if (events[i].data.fd == remoteSocketFd) {
+                        communication_handle_4over6_socket_write();
                     }
                 }
             }
+            if (encounterError) {
+                break;
+            }
         }
-    } while(0);
-    while(handle_frontend_command(commandPipeFd, responsePipeFd) != 0xFF);
+    } while (0);
+    while (handle_frontend_command(commandPipeFd, responsePipeFd) != BACKEND_IPC_COMMAND_TERMINATE);
     __android_log_print(ANDROID_LOG_VERBOSE,
                         "4over6 backend", "Leaving backend_main", hostName, port);
     return 0;
