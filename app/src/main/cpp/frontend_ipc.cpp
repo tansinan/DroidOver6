@@ -18,9 +18,8 @@ int handle_frontend_command(int commandPipeFd, int responsePipeFd) {
         return command;
     }
     if (command == BACKEND_IPC_COMMAND_STATUS) {
-        // TODO: This is a stub. Get them from communication module.
-        // TODO: Define backend states (initializing, getting ip config, running, dead)
-        write(responsePipeFd, "Alive", 5);
+        uint8_t status = communication_get_status();
+        write(responsePipeFd, &status, 1);
     }
     else if (command == BACKEND_IPC_COMMAND_STATISTICS) {
         // TODO: This is a stub. Get them from communication module.

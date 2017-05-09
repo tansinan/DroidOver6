@@ -74,18 +74,24 @@ int backend_main(const char *hostName, int port,
                         "4over6 backend", "Entering backend_main @ %s:%d", hostName, port);
     do {
         int remoteSocketFd = connectTo4Over6Server(hostName, port);
-        if (remoteSocketFd < 0)
+        if (remoteSocketFd < 0) {
+            communication_set_status(BACKEND_STATE_DISCONNECTED);
             break;
+        }
         int epollFd = createEpollFd(commandPipeFd, responsePipeFd);
-        if(epollFd < 0)
+        if(epollFd < 0) {
+            communication_set_status(BACKEND_STATE_DISCONNECTED);
             break;
+        }
         int fds[2] = {commandPipeFd, remoteSocketFd};
         if (!addToEpollFd(epollFd, fds, 2)) {
+            communication_set_status(BACKEND_STATE_DISCONNECTED);
             break;
         }
 
         communication_init(remoteSocketFd);
         epoll_event *events = (epoll_event *) calloc(3, sizeof(epoll_event));
+        communication_set_status(BACKEND_STATE_CONNECTED);
 
         // Event loop
         // TODO: To sent heartbeat packet, an timer fd needs to be created.

@@ -5,7 +5,18 @@
 #ifndef DROIDOVER6_COMMUNICATION_H_H
 #define DROIDOVER6_COMMUNICATION_H_H
 
+#include <stdint.h>
+
+const static uint8_t BACKEND_STATE_CONNECTING = 0;
+const static uint8_t BACKEND_STATE_WAITING_FOR_IP_CONFIGURATION = 1;
+const static uint8_t BACKEND_STATE_CONNECTED = 2;
+const static uint8_t BACKEND_STATE_DISCONNECTED = 3;
+
 void communication_init(int remoteSocketFd);
+
+int communication_get_status();
+
+void communication_set_status(int _currentStatus);
 
 void communication_set_tun_fd(int tunFd);
 

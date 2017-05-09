@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <android/log.h>
+#include "communication.h"
 
 const static int IP_PACKET_MAX_SIZE = 65536;
 
@@ -15,6 +16,8 @@ static char *tunDeviceBuffer = NULL;
 static int tunDeviceBufferUsed = 0;
 static char *over6PacketBuffer = NULL;
 static int over6PacketBufferUsed = 0;
+
+static int currentStatus = BACKEND_STATE_CONNECTING;
 
 // TODO: Define stored IP/DNS info.
 
@@ -74,6 +77,16 @@ void communication_init(int _remoteSocketFd)
     tunDeviceBufferUsed = 0;
     over6PacketBuffer = new char[IP_PACKET_MAX_SIZE * 100];
     over6PacketBufferUsed = 0;
+}
+
+int communication_get_status()
+{
+    return currentStatus;
+}
+
+void communication_set_status(int _currentStatus)
+{
+    currentStatus = _currentStatus;
 }
 
 void communication_handle_tun_read()

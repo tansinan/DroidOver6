@@ -85,7 +85,7 @@ public class Over6VpnService extends VpnService {
         ));
         backendThread.start();
         Log.d("Backend", "Backend started!");
-        new CountDownTimer(100000, 1000) {
+        new CountDownTimer(1000000, 1000) {
             int i = 0;
 
             public void onTick(long millisUntilFinished) {
@@ -133,18 +133,14 @@ public class Over6VpnService extends VpnService {
                     try {
                         commandStream.write(0);
                         commandStream.flush();
-                    } catch (IOException e) {
-                        return;
-                    }
-                    byte[] response = new byte[200];
-                    try {
-                        int temp = 0;
-                        //int temp = responseStream.read(response);
-                        Log.d("Backend", new String(Arrays.copyOfRange(response, 0, temp)));
-                        Log.d("Backend", "" + temp);
+                        int response = responseStream.read();
                         Intent intent = new Intent(BROADCAST_VPN_STATE);
-                        intent.putExtra("data", "Notice me " + i + "!");
+                        intent.putExtra("status_code", response);
                         LocalBroadcastManager.getInstance(Over6VpnService.this).sendBroadcast(intent);
+                        if(response == BackendIPC.BACKEND_STATE_DISCONNECTED)
+                        {
+                            Over6VpnService.this.reliableStop();
+                        }
                     } catch (Exception e) {
                         return;
                     }
@@ -168,7 +164,9 @@ public class Over6VpnService extends VpnService {
             Over6VpnService.getInstance().vpnInterface.close();
             Over6VpnService.getInstance().commandStream.close();
             Over6VpnService.getInstance().responseStream.close();
-        } catch (Exception e){}
+        } catch (Exception e) {
+
+        }
         Over6VpnService.getInstance().stopSelf();
     }
 }

@@ -2,6 +2,7 @@ package com.tinytangent.droidover6;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.VpnService;
@@ -9,6 +10,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.support.design.widget.TextInputEditText;
 import android.support.v4.content.LocalBroadcastManager;
+import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.view.View;
@@ -24,6 +26,7 @@ public class MainActivity extends AppCompatActivity {
     protected Button buttonChangeConnectionState = null;
     protected TextInputEditText inputHostName = null;
     protected TextInputEditText inputPort = null;
+
     protected static String defaultHostName = "2402:f000:5:8701:f400:6eab:6633:5b0a";
     protected static String defaultPortText = "13872";
 
@@ -32,15 +35,24 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onReceive(Context context, Intent intent)
         {
+            updateGUI();
             if(intent.getAction().equals(Over6VpnService.BROADCAST_VPN_STATE))
             {
-                Toast.makeText(MainActivity.this, intent.getStringExtra("data"), LENGTH_SHORT).show();
+                if(intent.getIntExtra("status_code", -1) == BackendIPC.BACKEND_STATE_DISCONNECTED) {
+                    AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
+
+                    builder.setMessage("An error occurred. Disconnected from server")
+                            .setTitle("Disconnected")
+                            .setNeutralButton("OK", new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface dialog, int which) {
+                                    dialog.dismiss();
+                                }
+                            });
+                    AlertDialog dialog = builder.create();
+                    dialog.show();
+                }
             }
-            /*if (Over6VpnService.BROADCAST_VPN_STATE.equals(intent.getAction()))
-            {
-                if (intent.getBooleanExtra("running", false))
-                    ;
-            }*/
         }
     };
 
