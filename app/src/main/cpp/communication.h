@@ -12,6 +12,9 @@ const static uint8_t BACKEND_STATE_WAITING_FOR_IP_CONFIGURATION = 1;
 const static uint8_t BACKEND_STATE_CONNECTED = 2;
 const static uint8_t BACKEND_STATE_DISCONNECTED = 3;
 
+extern int tunDeviceBufferUsed;
+extern int over6PacketBufferUsed;
+
 void communication_init(int remoteSocketFd);
 
 int communication_get_status();

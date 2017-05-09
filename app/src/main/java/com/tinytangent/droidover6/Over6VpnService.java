@@ -45,6 +45,7 @@ public class Over6VpnService extends VpnService {
     protected ParcelFileDescriptor vpnInterface = null;
     protected PendingIntent pendingIntent;
     static protected Over6VpnService instance = null;
+    static CountDownTimer timer = null;
     static Over6VpnService getInstance()
     {
         return instance;
@@ -85,7 +86,7 @@ public class Over6VpnService extends VpnService {
         ));
         backendThread.start();
         Log.d("Backend", "Backend started!");
-        new CountDownTimer(1000000, 1000) {
+        timer = new CountDownTimer(1000000, 1000) {
             int i = 0;
 
             public void onTick(long millisUntilFinished) {
@@ -116,7 +117,7 @@ public class Over6VpnService extends VpnService {
                                 .addRoute("0.0.0.0", 0)
                                 .addRoute("2400:cb00:2049:1::adf5:3b47", 128)
                                 .setSession(getString(R.string.app_name))
-                                .setConfigureIntent(pendingIntent)
+                                //.setConfigureIntent(pendingIntent)
                                 .establish();
                         commandStream.write(BACKEND_IPC_COMMAND_SET_TUNNEL_FD);
                         commandStream.write(ByteBuffer.allocate(4).putInt(vpnInterface.getFd()).array());
@@ -149,7 +150,8 @@ public class Over6VpnService extends VpnService {
 
             public void onFinish() {
             }
-        }.start();
+        };
+        timer.start();
         return START_REDELIVER_INTENT;
     }
 
@@ -161,9 +163,12 @@ public class Over6VpnService extends VpnService {
     public void reliableStop() {
         try {
             commandStream.write(BACKEND_IPC_COMMAND_TERMINATE);
-            Over6VpnService.getInstance().vpnInterface.close();
+            if(vpnInterface != null) {
+                Over6VpnService.getInstance().vpnInterface.close();
+            }
             Over6VpnService.getInstance().commandStream.close();
             Over6VpnService.getInstance().responseStream.close();
+            timer.cancel();
         } catch (Exception e) {
 
         }

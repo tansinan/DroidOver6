@@ -27,7 +27,7 @@ public class MainActivity extends AppCompatActivity {
     protected TextInputEditText inputHostName = null;
     protected TextInputEditText inputPort = null;
 
-    protected static String defaultHostName = "2402:f000:5:8701:f400:6eab:6633:5b0a";
+    protected static String defaultHostName = "2400:8500:1301:736:a133:130:98:2310";
     protected static String defaultPortText = "13872";
 
     protected BroadcastReceiver vpnStateReceiver = new BroadcastReceiver()

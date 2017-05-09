@@ -13,15 +13,15 @@ static int remoteSocketFd = -1;
 static int tunDeviceFd = -1;
 
 static char *tunDeviceBuffer = NULL;
-static int tunDeviceBufferUsed = 0;
+int tunDeviceBufferUsed = 0;
 static char *over6PacketBuffer = NULL;
-static int over6PacketBufferUsed = 0;
+int over6PacketBufferUsed = 0;
 
 static int currentStatus = BACKEND_STATE_CONNECTING;
 
 // TODO: Define stored IP/DNS info.
 
-static int readAllDataToBuffer(int fd, char* buffer, int* bufferUsed, int limit = 2 * IP_PACKET_MAX_SIZE)
+static int readAllDataToBuffer(int fd, unsigned char* buffer, int* bufferUsed, int limit = 2 * IP_PACKET_MAX_SIZE)
 {
     // TODO: Use a circular buffer is much better
     const ssize_t READ_SIZE = IP_PACKET_MAX_SIZE;
@@ -40,7 +40,7 @@ void communication_set_tun_fd(int tunFd)
     tunDeviceFd = tunFd;
 }
 
-int sendIpPacketBuffer(int fd, char *buffer, int *bufferUsed) {
+int sendIpPacketBuffer(int fd, unsigned char *buffer, int *bufferUsed) {
     // TODO: Use a circular buffer is much better
     for(;;) {
         if((*bufferUsed) < 4) {
@@ -92,14 +92,14 @@ void communication_set_status(int _currentStatus)
 void communication_handle_tun_read()
 {
     // TODO: Add output bytes counter for statistics.
-    readAllDataToBuffer(tunDeviceFd, tunDeviceBuffer, &tunDeviceBufferUsed);
+    readAllDataToBuffer(tunDeviceFd, (unsigned char*)tunDeviceBuffer, &tunDeviceBufferUsed);
 }
 
 void communication_handle_tun_write()
 {
     // TODO: Add input bytes counter for statistics.
     if( over6PacketBufferUsed > 0) {
-        sendIpPacketBuffer(tunDeviceFd, over6PacketBuffer, &over6PacketBufferUsed);
+        sendIpPacketBuffer(tunDeviceFd, (unsigned char*)over6PacketBuffer, &over6PacketBufferUsed);
     }
 }
 
@@ -108,16 +108,16 @@ void communication_handle_4over6_socket_read()
     // TODO: Need to follow 4over6 specification.
     // TODO: Actual 4over6 packet have different types (IP/DNS info, IP packet, or heartbeat)
     // This assumes that ip packet is sent one by one via tcp stream.
-    readAllDataToBuffer(remoteSocketFd, over6PacketBuffer,
+    readAllDataToBuffer(remoteSocketFd, (unsigned char*)over6PacketBuffer,
                         &over6PacketBufferUsed);
-    sendIpPacketBuffer(tunDeviceFd, over6PacketBuffer, &over6PacketBufferUsed);
+    sendIpPacketBuffer(tunDeviceFd, (unsigned char*)over6PacketBuffer, &over6PacketBufferUsed);
 }
 
 void communication_handle_4over6_socket_write()
 {
     // TODO: Need to follow 4over6 specification.
     if(tunDeviceBufferUsed > 0)
-        sendIpPacketBuffer(remoteSocketFd, tunDeviceBuffer, &tunDeviceBufferUsed);
+        sendIpPacketBuffer(remoteSocketFd, (unsigned char*)tunDeviceBuffer, &tunDeviceBufferUsed);
 }
 
 void communication_handle_timer()

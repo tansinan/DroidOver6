@@ -32,7 +32,7 @@ int handle_frontend_command(int commandPipeFd, int responsePipeFd) {
         // TODO: This is a stub. Get them from communication module.
         uint8_t ip[4] = {10, 10, 10, 2};
         uint8_t mask[4] = {255, 255, 255, 0};
-        uint8_t dns1[4] = {166, 111, 8, 28};
+        uint8_t dns1[4] = {114, 114, 114, 114};
         uint8_t dns2[4] = {166, 111, 8, 29};
         uint8_t dns3[4] = {166, 111, 8, 30};
         write(responsePipeFd, ip, 4);
