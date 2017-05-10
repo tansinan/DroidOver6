@@ -29,17 +29,15 @@ int handle_frontend_command(int commandPipeFd, int responsePipeFd) {
         write(responsePipeFd, &inBytes, sizeof(inBytes));
         write(responsePipeFd, &outBytes, sizeof(outBytes));
     } else if (command == BACKEND_IPC_COMMAND_CONFIGURATION) {
-        // TODO: This is a stub. Get them from communication module.
-        uint8_t ip[4] = {10, 10, 10, 2};
-        uint8_t mask[4] = {255, 255, 255, 0};
-        uint8_t dns1[4] = {166, 111, 8, 28};
-        uint8_t dns2[4] = {166, 111, 8, 29};
-        uint8_t dns3[4] = {166, 111, 8, 30};
-        write(responsePipeFd, ip, 4);
-        write(responsePipeFd, mask, 4);
-        write(responsePipeFd, dns1, 4);
-        write(responsePipeFd, dns2, 4);
-        write(responsePipeFd, dns3, 4);
+        if (!communication_is_ip_confiugration_recevied()) {
+            communication_get_ip_confiugration();
+            // comm_ip ... will be invalid, which means none, just write
+        }
+        write(responsePipeFd, comm_ip, 4);
+        write(responsePipeFd, comm_mask, 4);
+        write(responsePipeFd, comm_dns1, 4);
+        write(responsePipeFd, comm_dns2, 4);
+        write(responsePipeFd, comm_dns3, 4);
     } else if (command == BACKEND_IPC_COMMAND_SET_TUNNEL_FD) {
         for (; ; ) {
             int ret = read(commandPipeFd, &tunFd, 4);

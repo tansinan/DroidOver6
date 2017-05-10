@@ -20,6 +20,8 @@ import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.channels.Pipe;
 import java.util.Arrays;
+import java.util.Timer;
+import java.util.TimerTask;
 
 /**
  * Created by tansinan on 5/4/17.
@@ -52,7 +54,7 @@ public class Over6VpnService extends VpnService {
 
     protected ParcelFileDescriptor vpnInterface = null;
     protected PendingIntent pendingIntent;
-    protected CountDownTimer timer = null;
+    protected Timer timer = null;
 
     static protected Over6VpnService instance = null;
 
@@ -105,27 +107,35 @@ public class Over6VpnService extends VpnService {
 
         backendThread.start();
         Log.d("Backend", "Backend started!");
-        timer = new CountDownTimer(1000000, 1000) {
+
+        TimerTask timer_task = new TimerTask() {
             int i = 0;
 
-            public void onTick(long millisUntilFinished) {
-                if(!backendThread.isAlive())
-                {
+            public void run() {
+                if (!backendThread.isAlive()) {
                     Intent intent = new Intent(BROADCAST_VPN_STATE);
                     intent.putExtra("status_code", BackendIPC.BACKEND_STATE_DISCONNECTED);
                     LocalBroadcastManager.getInstance(Over6VpnService.this).sendBroadcast(intent);
                     Over6VpnService.this.reliableStop();
                     return;
-                }
-                else if (vpnInterface == null) {
+                } else if (vpnInterface == null) {
                     try {
                         commandStream.write(BACKEND_IPC_COMMAND_CONFIGURATION);
                         byte[] data = readExactBytes(responseStream, 20);
                         InetAddress address = InetAddress.getByAddress(Arrays.copyOfRange(data, 0, 4));
                         InetAddress dns = InetAddress.getByAddress(Arrays.copyOfRange(data, 8, 12));
+                        InetAddress dns2 = InetAddress.getByAddress(Arrays.copyOfRange(data, 12, 16));
+                        InetAddress dns3 = InetAddress.getByAddress(Arrays.copyOfRange(data, 16, 20));
+                        byte[] addr = address.getAddress();
+                        if (addr[0] == -1 && addr[1] == -1 && addr[2] == -1 && addr[3] == -1) {
+                            Log.d("DroidOver6 VPN", "Waiting address from server");
+                            return;
+                        }
                         vpnInterface = new Builder()
                                 .addAddress(address, 24)
                                 .addDnsServer(dns)
+                                .addDnsServer(dns2)
+                                .addDnsServer(dns3)
                                 .addRoute("0.0.0.0", 0)
                                 .addRoute(IPV6_NONE, 128)
                                 .setSession(getString(R.string.app_name))
@@ -137,7 +147,9 @@ public class Over6VpnService extends VpnService {
                         Log.d("DroidOver6 VPN", "IO error");
                         return;
                     } catch (IllegalArgumentException e) {
-                        //TODO: handle illegal IP/DNS Configuration.
+                        // illegal IP/DNS Configuration.
+                        Log.d("DroidOver6 VPN", "Illegal IP/DNS Configuration");
+                        return;
                     }
                 } else {
                     try {
@@ -168,10 +180,10 @@ public class Over6VpnService extends VpnService {
                 }
             }
 
-            public void onFinish() {
-            }
         };
-        timer.start();
+
+        timer = new Timer();
+        timer.scheduleAtFixedRate(timer_task, 1000, 1000);
         return START_REDELIVER_INTENT;
     }
 

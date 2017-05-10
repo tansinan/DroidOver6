@@ -18,6 +18,8 @@ const static int PIPE_BUF_LEN = 65536 * 100;
 const static int SERVER_PORT = 13872;
 const static int BUFFER_LENGTH = 250;
 
+const static uint8_t TYPE_IP_REQUEST = 100;
+const static uint8_t TYPE_IP_REPLY   = 101;
 const static uint8_t TYPE_REQUEST = 102;
 const static uint8_t TYPE_REPLY   = 103;
 const static uint8_t TYPE_HEART   = 104;
@@ -30,6 +32,12 @@ typedef struct {
 
 extern int tunDeviceBufferUsed;
 extern int over6PacketBufferUsed;
+
+extern uint8_t comm_ip[4];
+extern uint8_t comm_mask[4];
+extern uint8_t comm_dns1[4];
+extern uint8_t comm_dns2[4];
+extern uint8_t comm_dns3[4];
 
 void communication_init(int remoteSocketFd);
 

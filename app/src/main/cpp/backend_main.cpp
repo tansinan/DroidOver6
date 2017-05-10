@@ -140,13 +140,13 @@ int backend_main(const char *hostName, int port,
                 }
             }
 
-            if (events[i].events & EPOLLOUT) {
-                if (events[i].data.fd == tunDeviceFd) {
+            if (events[i].events & EPOLLOUT || tunDeviceFd == -1) {
+                if (events[i].data.fd == tunDeviceFd || tunDeviceFd == -1) {
+                    // when tun not available
+                    // still need to handle 4over6 packets, also drop data
                     bool heartbeated = false;
                     communication_handle_4over6_packets(&heartbeated);
-                    if (heartbeated) {
-                        lastHeartBeated = now;
-                    }
+                    if (heartbeated) lastHeartBeated = now;
                 } else if (events[i].data.fd == remoteSocketFd) {
                     if (needHeartBeat) {
                         communication_send_heartbeat();

@@ -4,6 +4,7 @@
 
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <android/log.h>
 #include "communication.h"
 
@@ -20,7 +21,11 @@ static int currentStatus = BACKEND_STATE_CONNECTING;
 static uint64_t totalInBytes = 0;
 static uint64_t totalOutBytes = 0;
 
-// TODO: Define stored IP/DNS info.
+uint8_t comm_ip[4] = {-1, -1, -1, -1};
+uint8_t comm_mask[4] = {-1, -1, -1, -1};
+uint8_t comm_dns1[4] = {-1, -1, -1, -1};
+uint8_t comm_dns2[4] = {-1, -1, -1, -1};
+uint8_t comm_dns3[4] = {-1, -1, -1, -1};
 
 static int readToBuf(int fd, uint8_t *buffer, int *used) {
     int total = 0, ret = 0;
@@ -67,6 +72,22 @@ void over6Handle(int fd, uint8_t *buffer, int *used, bool *heartbeated) {
             if (ret >= 0 && fd == tunDeviceFd) {
                 totalInBytes += ret;
             }
+        } else if (data->type == TYPE_IP_REPLY) {
+            __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "ip conf recv");
+            char buf[BUFFER_LENGTH], *ptr = buf;
+            int a, b, c, d;
+            size_t len = (actual_size >= BUFFER_LENGTH ? BUFFER_LENGTH - 1 : actual_size);
+            memcpy(ptr, buffer + sizeof(over6Packet), len); ptr[len] = '\0';
+            __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "%s", ptr);
+#define NEXT_IP(A) do { \
+                sscanf(ptr, "%d.%d.%d.%d", &a, &b, &c, &d); \
+                A[0] = (uint8_t )a; A[1] = (uint8_t )b; \
+                A[2] = (uint8_t )c; A[3] = (uint8_t )d; \
+                ++ptr; \
+                while (*ptr && *ptr != ' ') ptr++; \
+            } while (0)
+            NEXT_IP(comm_ip); NEXT_IP(comm_mask);
+            NEXT_IP(comm_dns1); NEXT_IP(comm_dns2); NEXT_IP(comm_dns3);
         } else {
             __android_log_print(ANDROID_LOG_WARN, "backend thread", "Not implemented yet\n");
         }
@@ -115,24 +136,19 @@ void communication_set_status(int _currentStatus) {
 }
 
 void communication_handle_tun_read() {
-    // TODO: Add output bytes counter for statistics.
     readToBuf(tunDeviceFd, tunDeviceBuffer, &tunDeviceBufferUsed);
 }
 
 void communication_handle_4over6_packets(bool *heartbeated) {
-    // TODO: Add input bytes counter for statistics.
+    // Handle different 4over6 packet types (IP/DNS info, IP packet, or heartbeat)
     over6Handle(tunDeviceFd, over6PacketBuffer, &over6PacketBufferUsed, heartbeated);
 }
 
 void communication_handle_4over6_socket_read() {
-    // TODO: Need to follow 4over6 specification.
-    // TODO: Actual 4over6 packet have different types (IP/DNS info, IP packet, or heartbeat)
-    // This assumes that ip packet is sent one by one via tcp stream.
     readToBuf(remoteSocketFd, over6PacketBuffer, &over6PacketBufferUsed);
 }
 
 void communication_handle_4over6_socket_write() {
-    // TODO: Need to follow 4over6 specification.
     rawToOver6(remoteSocketFd, tunDeviceBuffer, &tunDeviceBufferUsed);
 }
 
@@ -148,11 +164,21 @@ void communication_send_heartbeat() {
 }
 
 int communication_is_ip_confiugration_recevied() {
-    // TODO: Returns whether IPv4 Configuration is already received through network.
+    // Broadcast IP is invalid and initial value.
+    return comm_ip[0] != 255 || comm_ip[1] != 255 ||
+            comm_ip[2] != 255 || comm_ip[3] != 255 ;
 }
 
 void communication_get_ip_confiugration() {
-    // TODO: Returns IPv4 Configuration
+    // Send packet to request IP configuration
+    over6Packet header;
+    header.type = TYPE_IP_REQUEST;
+    header.length = htonl(sizeof(header));
+    if (write(remoteSocketFd, &header, sizeof(header)) < sizeof(header)) {
+        __android_log_print(ANDROID_LOG_ERROR, "backend thread",
+                            "->O6 failed to send IP request");
+    }
+    __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "sent IP request\n");
 }
 
 void communication_get_statistics(uint64_t *inBytes, uint64_t *outBytes) {
