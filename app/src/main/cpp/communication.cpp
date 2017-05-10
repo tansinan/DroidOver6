@@ -21,11 +21,11 @@ static int currentStatus = BACKEND_STATE_CONNECTING;
 static uint64_t totalInBytes = 0;
 static uint64_t totalOutBytes = 0;
 
-uint8_t comm_ip[4] = {-1, -1, -1, -1};
-uint8_t comm_mask[4] = {-1, -1, -1, -1};
-uint8_t comm_dns1[4] = {-1, -1, -1, -1};
-uint8_t comm_dns2[4] = {-1, -1, -1, -1};
-uint8_t comm_dns3[4] = {-1, -1, -1, -1};
+uint8_t comm_ip[4];
+uint8_t comm_mask[4];
+uint8_t comm_dns1[4];
+uint8_t comm_dns2[4];
+uint8_t comm_dns3[4];
 
 static int readToBuf(int fd, uint8_t *buffer, int *used) {
     int total = 0, ret = 0;
@@ -48,7 +48,7 @@ void communication_set_tun_fd(int tunFd) {
 
 void over6Handle(int fd, uint8_t *buffer, int *used, bool *heartbeated) {
     for (; ; ) {  // for all packets
-        if ((*used) < 4) return;  // need more read
+        if ((*used) < sizeof(over6Packet)) return;  // need more read
 
         over6Packet *data = (over6Packet *) buffer;
         uint32_t len = ntohl(data->length);
@@ -125,6 +125,11 @@ void communication_init(int _remoteSocketFd) {
     over6PacketBufferUsed = 0;
     totalInBytes = 0;
     totalOutBytes = 0;
+    memset(comm_ip, 255U, 4);
+    memset(comm_mask, 255U, 4);
+    memset(comm_dns1, 255U, 4);
+    memset(comm_dns2, 255U, 4);
+    memset(comm_dns3, 255U, 4);
 }
 
 int communication_get_status() {
