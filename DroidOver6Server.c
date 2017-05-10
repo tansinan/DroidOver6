@@ -100,10 +100,10 @@ static void over6Handle(int fd, uint8_t *buffer, int *used) {
             over6Packet header;
             header.type = TYPE_IP_REPLY;
             header.length = htonl(sizeof(reply) + sizeof(header));
-            if (write(over6_fd, &header, sizeof(header)) < sizeof(header)) {
+            if (write(over6_fd, &header, sizeof(header)) < (int)sizeof(header)) {
                 printf("\nERROR ->O6 ip reply\n");
             }
-            if (write(over6_fd, reply, sizeof(reply)) < sizeof(reply)) {
+            if (write(over6_fd, reply, sizeof(reply)) < (int)sizeof(reply)) {
                 printf("\nERROR ->O6 ip reply\n");
             }
         } else {
@@ -118,15 +118,16 @@ static void over6Handle(int fd, uint8_t *buffer, int *used) {
 
 static void rawToOver6(int fd, uint8_t *buffer, int *used) {
     if (!*used) return;  // no data
+    int transf = *used;
     over6Packet header;
     header.type = TYPE_REPLY;
-    header.length = htonl(*used + sizeof(header));
+    header.length = htonl(transf + sizeof(header));
     int temp;
     if ((temp = write(fd, &header, sizeof(header))) < (int)sizeof(header)) {
         printf("ERROR ->O6 size = %lu err = %d\n", sizeof(header), temp);
     }
-    if ((temp = write(fd, buffer, *used)) < 0) {
-        printf("ERROR ->O6 size = %d err = %d\n", *used, temp);
+    if ((temp = write(fd, buffer, transf)) < 0) {
+        printf("ERROR ->O6 size = %d err = %d\n", transf, temp);
     }
     printf(" [%lu] ", temp + sizeof(header));
     memmove(buffer, buffer + temp, *used - temp);
