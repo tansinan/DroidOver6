@@ -7,28 +7,27 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <stdint.h>
+#include <android/log.h>
 
 int tunFd = -1;
 
 int handle_frontend_command(int commandPipeFd, int responsePipeFd) {
     unsigned char command;
     int ret = read(commandPipeFd, &command, 1);
-    if(ret != 1) return ret;
-    if(command == BACKEND_IPC_COMMAND_TERMINATE) {
+    if (ret != 1) return ret;
+    if (command == BACKEND_IPC_COMMAND_TERMINATE) {
         return command;
     }
     if (command == BACKEND_IPC_COMMAND_STATUS) {
         uint8_t status = communication_get_status();
         write(responsePipeFd, &status, 1);
-    }
-    else if (command == BACKEND_IPC_COMMAND_STATISTICS) {
+    } else if (command == BACKEND_IPC_COMMAND_STATISTICS) {
         // TODO: This is a stub. Get them from communication module.
         int64_t inBytes = 12345;
         int64_t outBytes = 67890;
         write(responsePipeFd, &inBytes, sizeof(inBytes));
         write(responsePipeFd, &outBytes, sizeof(outBytes));
-    }
-    else if (command == BACKEND_IPC_COMMAND_CONFIGURATION) {
+    } else if (command == BACKEND_IPC_COMMAND_CONFIGURATION) {
         // TODO: This is a stub. Get them from communication module.
         uint8_t ip[4] = {10, 10, 10, 2};
         uint8_t mask[4] = {255, 255, 255, 0};
@@ -40,12 +39,12 @@ int handle_frontend_command(int commandPipeFd, int responsePipeFd) {
         write(responsePipeFd, dns1, 4);
         write(responsePipeFd, dns2, 4);
         write(responsePipeFd, dns3, 4);
-    }
-    else if (command == BACKEND_IPC_COMMAND_SET_TUNNEL_FD) {
-        for(;;) {
+    } else if (command == BACKEND_IPC_COMMAND_SET_TUNNEL_FD) {
+        for (; ; ) {
             int ret = read(commandPipeFd, &tunFd, 4);
             if (ret > 0) {
                 tunFd = ntohl(tunFd);
+                __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "communication_set_tun_fd");
                 communication_set_tun_fd(tunFd);
                 break;
             }

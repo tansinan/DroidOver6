@@ -6,11 +6,27 @@
 #define DROIDOVER6_COMMUNICATION_H_H
 
 #include <stdint.h>
+#include <arpa/inet.h>
 
 const static uint8_t BACKEND_STATE_CONNECTING = 0;
 const static uint8_t BACKEND_STATE_WAITING_FOR_IP_CONFIGURATION = 1;
 const static uint8_t BACKEND_STATE_CONNECTED = 2;
 const static uint8_t BACKEND_STATE_DISCONNECTED = 3;
+
+const static int IP_PACKET_MAX_SIZE = 65536;
+const static int PIPE_BUF_LEN = 65536 * 100;
+const static int SERVER_PORT = 13872;
+const static int BUFFER_LENGTH = 250;
+
+const static uint8_t TYPE_REQUEST = 102;
+const static uint8_t TYPE_REPLY   = 103;
+const static uint8_t TYPE_HEART   = 104;
+
+typedef struct {
+    uint32_t length;
+    uint8_t type;
+    uint8_t data[];
+} __attribute__((packed)) over6Packet;
 
 extern int tunDeviceBufferUsed;
 extern int over6PacketBufferUsed;

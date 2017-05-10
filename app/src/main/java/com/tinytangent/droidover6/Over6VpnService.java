@@ -26,26 +26,34 @@ import java.util.Arrays;
  */
 
 public class Over6VpnService extends VpnService {
-    protected static byte BACKEND_IPC_COMMAND_STATUS = (byte)0x00;
-    protected static byte BACKEND_IPC_COMMAND_STATISTICS = (byte)0x01;
-    protected static byte BACKEND_IPC_COMMAND_CONFIGURATION = (byte)0x02;
-    protected static byte BACKEND_IPC_COMMAND_SET_TUNNEL_FD = (byte)0x03;
-    protected static byte BACKEND_IPC_COMMAND_TERMINATE = (byte)0xFF;
+
+    protected static final byte BACKEND_IPC_COMMAND_STATUS = (byte)0x00;
+    protected static final byte BACKEND_IPC_COMMAND_STATISTICS = (byte)0x01;
+    protected static final byte BACKEND_IPC_COMMAND_CONFIGURATION = (byte)0x02;
+    protected static final byte BACKEND_IPC_COMMAND_SET_TUNNEL_FD = (byte)0x03;
+    protected static final byte BACKEND_IPC_COMMAND_TERMINATE = (byte)0xFF;
+
+    protected static final String IPV6_NONE = "2001:db8:ffff:ffff:ffff:ffff:ffff:ffff";
+
+    public static final String BROADCAST_VPN_STATE = "com.tinytangent.droidover6.STATUS_CHANGED";
+
     ParcelFileDescriptor commandReadFd;
     ParcelFileDescriptor commandWriteFd;
     ParcelFileDescriptor responseReadFd;
     ParcelFileDescriptor responseWriteFd;
+
     Pipe communicationPipe = null;
     Pipe.SourceChannel commandChannel = null;
     Pipe.SinkChannel responseChannel = null;
     FileOutputStream commandStream = null;
     FileInputStream responseStream = null;
     Thread backendThread = null;
-    public static final String BROADCAST_VPN_STATE = "com.tinytangent.droidover6.STATUS_CHANGED";
+
     protected ParcelFileDescriptor vpnInterface = null;
     protected PendingIntent pendingIntent;
+    protected CountDownTimer timer = null;
+
     static protected Over6VpnService instance = null;
-    static CountDownTimer timer = null;
     static Over6VpnService getInstance()
     {
         return instance;
@@ -73,17 +81,18 @@ public class Over6VpnService extends VpnService {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         super.onCreate();
-        //LocalBroadcastManager.getInstance(this).sendBroadcast(new Intent(BROADCAST_VPN_STATE).putExtra("running", true));
+        //LocalBroadcastManager.getInstance(this).sendBroadcast(
+        //  new Intent(BROADCAST_VPN_STATE).putExtra("running", true));
         commandStream = new FileOutputStream(commandWriteFd.getFileDescriptor());
         responseStream = new FileInputStream(responseReadFd.getFileDescriptor());
         String hostName = intent.getStringExtra("host_name");
         int port = intent.getIntExtra("port", 0);
         backendThread = new Thread(new BackendWrapperThread(
             hostName, port,
-            -1,
             commandReadFd.getFd(),
             responseWriteFd.getFd()
         ));
+
         backendThread.start();
         Log.d("Backend", "Backend started!");
         timer = new CountDownTimer(1000000, 1000) {
@@ -91,20 +100,16 @@ public class Over6VpnService extends VpnService {
 
             public void onTick(long millisUntilFinished) {
 
-                if(vpnInterface == null)
-                {
+                if (vpnInterface == null) {
                     byte[] data = new byte[20];
                     try {
                         commandStream.write(BACKEND_IPC_COMMAND_CONFIGURATION);
                         int bytesRead = 0;
-                        while(bytesRead < data.length)
-                        {
+                        while (bytesRead < data.length) {
                             int ret = responseStream.read(data, bytesRead, data.length - bytesRead);
-                            if(ret > 0)
-                                bytesRead += ret;
+                            if (ret > 0) bytesRead += ret;
                         }
-                    }
-                    catch (IOException e) {
+                    } catch (IOException e) {
                         Log.d("DroidOver6 VPN", "IO error");
                         return;
                     }
@@ -115,7 +120,7 @@ public class Over6VpnService extends VpnService {
                                 .addAddress(address, 24)
                                 .addDnsServer(dns)
                                 .addRoute("0.0.0.0", 0)
-                                .addRoute("2400:cb00:2049:1::adf5:3b47", 128)
+                                .addRoute(IPV6_NONE, 128)
                                 .setSession(getString(R.string.app_name))
                                 //.setConfigureIntent(pendingIntent)
                                 .establish();
@@ -125,8 +130,7 @@ public class Over6VpnService extends VpnService {
                         //This is impossible.
                     } catch (IllegalArgumentException e) {
                         //TODO: handle illegal IP/DNS Configuration.
-                    }
-                    catch (IOException e) {
+                    } catch (IOException e) {
 
                     }
                 }
@@ -138,8 +142,7 @@ public class Over6VpnService extends VpnService {
                         Intent intent = new Intent(BROADCAST_VPN_STATE);
                         intent.putExtra("status_code", response);
                         LocalBroadcastManager.getInstance(Over6VpnService.this).sendBroadcast(intent);
-                        if(response == BackendIPC.BACKEND_STATE_DISCONNECTED)
-                        {
+                        if(response == BackendIPC.BACKEND_STATE_DISCONNECTED) {
                             Over6VpnService.this.reliableStop();
                         }
                     } catch (Exception e) {

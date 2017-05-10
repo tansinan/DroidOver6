@@ -22,17 +22,14 @@ static int connectTo4Over6Server(const char *hostName, int port) {
     int ret = 0;
     struct sockaddr_in6 serv_addr;
     struct hostent *server;
+
     int socketFd = socket(AF_INET6, SOCK_STREAM, 0);
-    if (socketFd < 0)
-        return socketFd;
+    if (socketFd < 0) return socketFd;
+
     int flags = fcntl(socketFd, F_GETFL, 0);
-    if (flags == -1) {
-        return 0;
-    }
+    if (flags == -1) return 0;
     flags |= O_NONBLOCK;
-    if (fcntl(socketFd, F_SETFL, flags)) {
-        return 0;
-    }
+    if (fcntl(socketFd, F_SETFL, flags)) return 0;
 
     server = gethostbyname2(hostName, AF_INET6);
     if (server == NULL)
@@ -46,8 +43,7 @@ static int connectTo4Over6Server(const char *hostName, int port) {
 
     // TODO: Connect is still blocking.
     ret = connect(socketFd, (struct sockaddr *) &serv_addr, sizeof(serv_addr));
-    if (ret < 0 && errno != EINPROGRESS)
-        return ret;
+    if (ret < 0 && errno != EINPROGRESS) return ret;
     return socketFd;
 }
 
@@ -78,7 +74,8 @@ static int addToEpollFd(int epollFd, int *fds, int count) {
 }
 
 int backend_main(const char *hostName, int port,
-                 int tunDeviceFd, int commandPipeFd, int responsePipeFd) {
+                 int commandPipeFd, int responsePipeFd) {
+    int tunDeviceFd = -1;
     __android_log_print(ANDROID_LOG_VERBOSE,
                         "4over6 backend", "Entering backend_main @ %s:%d", hostName, port);
     do {
@@ -108,9 +105,10 @@ int backend_main(const char *hostName, int port,
             bool encounterError = false;
             int eventCount = epoll_wait(epollFd, events, 3, -1);
             for (int i = 0; i < eventCount; i++) {
+
                 if ((events[i].events & EPOLLERR) ||
-                    (events[i].events & EPOLLHUP) ||
-                    (!(events[i].events & (EPOLLIN | EPOLLOUT)))) {
+                        (events[i].events & EPOLLHUP) ||
+                        (!(events[i].events & (EPOLLIN | EPOLLOUT)))) {
                     __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "epoll error\n");
                     communication_set_status(BACKEND_STATE_DISCONNECTED);
                     encounterError = true;
@@ -122,10 +120,9 @@ int backend_main(const char *hostName, int port,
                         int ret = handle_frontend_command(commandPipeFd, responsePipeFd);
                         if (ret == BACKEND_IPC_COMMAND_SET_TUNNEL_FD) {
                             addToEpollFd(epollFd, &tunFd, 1);
+                            __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "addToEpoll");
                             tunDeviceFd = tunFd;
-                        }
-                        else if(ret == BACKEND_IPC_COMMAND_TERMINATE)
-                        {
+                        } else if(ret == BACKEND_IPC_COMMAND_TERMINATE) {
                             encounterError = true;
                             break;
                         }
@@ -143,23 +140,20 @@ int backend_main(const char *hostName, int port,
                 }
             }
             struct epoll_event event;
-            if(tunDeviceFd != -1) {
+            if (tunDeviceFd != -1) {
                 event.data.fd = tunDeviceFd;
                 if (over6PacketBufferUsed > 0) {
-                    event.events = EPOLLIN | EPOLLOUT;
+                    event.events = EPOLLIN | EPOLLOUT | EPOLLERR | EPOLLHUP;
                 } else {
-                    event.events = EPOLLIN;
+                    event.events = EPOLLIN | EPOLLERR | EPOLLHUP;
                 }
                 epoll_ctl(epollFd, EPOLL_CTL_MOD, tunDeviceFd, &event);
             }
             event.data.fd = remoteSocketFd;
-            if(tunDeviceBufferUsed > 0)
-            {
-                event.events = EPOLLIN | EPOLLOUT;
-            }
-            else
-            {
-                event.events = EPOLLIN;
+            if(tunDeviceBufferUsed > 0) {
+                event.events = EPOLLIN | EPOLLOUT | EPOLLERR | EPOLLHUP;
+            } else {
+                event.events = EPOLLIN | EPOLLERR | EPOLLHUP;
             }
             epoll_ctl(epollFd, EPOLL_CTL_MOD, remoteSocketFd, &event);
             if (encounterError) {

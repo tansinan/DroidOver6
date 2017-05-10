@@ -36,8 +36,7 @@ public class MainActivity extends AppCompatActivity {
         public void onReceive(Context context, Intent intent)
         {
             updateGUI();
-            if(intent.getAction().equals(Over6VpnService.BROADCAST_VPN_STATE))
-            {
+            if(intent.getAction().equals(Over6VpnService.BROADCAST_VPN_STATE))  {
                 if(intent.getIntExtra("status_code", -1) == BackendIPC.BACKEND_STATE_DISCONNECTED) {
                     AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
 
@@ -56,17 +55,13 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
-    protected void updateGUI()
-    {
-        if(ServiceUtil.isServiceRunning(this, Over6VpnService.class))
-        {
+    protected void updateGUI() {
+        if(ServiceUtil.isServiceRunning(this, Over6VpnService.class)) {
             uiModeForVpnStarted = true;
             buttonChangeConnectionState.setText("Disconnect");
             inputHostName.setEnabled(false);
             inputPort.setEnabled(false);
-        }
-        else
-        {
+        } else {
             uiModeForVpnStarted = false;
             buttonChangeConnectionState.setText("Connect");
             inputHostName.setEnabled(true);
@@ -100,18 +95,15 @@ public class MainActivity extends AppCompatActivity {
 
 
     @Override
-    public void onResume()
-    {
+    public void onResume() {
         super.onResume();
         updateGUI();
     }
 
     @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data)
-    {
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == VPN_REQUEST_CODE && resultCode == RESULT_OK)
-        {
+        if (requestCode == VPN_REQUEST_CODE && resultCode == RESULT_OK) {
             startVPNService();
         }
     }
@@ -126,8 +118,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     protected void startVPNService() {
-        if(ServiceUtil.isServiceRunning(this, Over6VpnService.class))
-        {
+        if (ServiceUtil.isServiceRunning(this, Over6VpnService.class)) {
             updateGUI();
             return;
         }
@@ -139,8 +130,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     protected void stopVPNService() {
-        if(!ServiceUtil.isServiceRunning(this, Over6VpnService.class))
-        {
+        if(!ServiceUtil.isServiceRunning(this, Over6VpnService.class)) {
             updateGUI();
             return;
         }
