@@ -20,14 +20,14 @@
 
 typedef struct epoll_event epoll_event;
 
-const static int IP_PACKET_MAX_SIZE = 65536;
-const static int PIPE_BUF_LEN = 65536 * 100;
-const static int SERVER_PORT = 13872;
-const static int BUFFER_LENGTH = 250;
+static const int IP_PACKET_MAX_SIZE = 65536;
+static const int PIPE_BUF_LEN = 65536 * 100;
+static const int SERVER_PORT = 13872;
+static const int BUFFER_LENGTH = 250;
 
-const static uint8_t TYPE_REQUEST = 102;
-const static uint8_t TYPE_REPLY = 103;
-const static uint8_t TYPE_HEART = 104;
+static const uint8_t TYPE_REQUEST = 102;
+static const uint8_t TYPE_REPLY = 103;
+static const uint8_t TYPE_HEART = 104;
 
 typedef struct {
     uint32_t length;
@@ -63,7 +63,7 @@ static int tunOpen(char *devname) {
 static int readToBuf(int fd, uint8_t *buffer, int *used) {
     int total = 0, ret = 0;
     const size_t READ_SIZE = IP_PACKET_MAX_SIZE;
-    while ((*used) < PIPE_BUF_LEN - READ_SIZE) {
+    while ((uint32_t)(*used) < PIPE_BUF_LEN - READ_SIZE) {
         ret = read(fd, buffer + *used, READ_SIZE);
         if (ret <= 0) break;
         (*used) += ret;
@@ -79,7 +79,7 @@ static void over6Handle(int fd, uint8_t *buffer, int *used) {
 
         over6Packet *data = (over6Packet *) buffer;
         uint32_t len = ntohl(data->length);
-        if (*used < len) return; // packet not complete
+        if ((uint32_t)*used < len) return; // packet not complete
 
         size_t actual_size = len - sizeof(over6Packet);
 
@@ -88,7 +88,7 @@ static void over6Handle(int fd, uint8_t *buffer, int *used) {
         } else if (data->type == TYPE_REQUEST) {
             // send packet to raw network
             int ret = 0;
-            if ((ret = write(fd, data->data, actual_size)) < actual_size) {
+            if ((ret = write(fd, data->data, actual_size)) < (int)actual_size) {
                 printf("\nERROR ->RAW size = %d err = %d\n", len, ret);
             }
         } else {
@@ -107,13 +107,13 @@ static void rawToOver6(int fd, uint8_t *buffer, int *used) {
     header.type = TYPE_REPLY;
     header.length = htonl(*used + sizeof(header));
     int temp;
-    if ((temp = write(fd, &header, sizeof(header))) < sizeof(header)) {
-        printf("ERROR ->O6 size = %d err = %d\n", sizeof(header), temp);
+    if ((temp = write(fd, &header, sizeof(header))) < (int)sizeof(header)) {
+        printf("ERROR ->O6 size = %lu err = %d\n", sizeof(header), temp);
     }
-    if ((temp = write(fd, buffer, *used)) < *used) {
+    if ((temp = write(fd, buffer, *used)) < (int)*used) {
         printf("ERROR ->O6 size = %d err = %d\n", *used, temp);
     }
-    printf(" [%d] ", *used + sizeof(header));
+    printf(" [%lu] ", *used + sizeof(header));
     *used = 0;
 }
 
@@ -138,7 +138,7 @@ static int addToEpollFd(int epollFd, int *fds, int count) {
     return 1;
 }
 
-int main(int argc, uint8_t *argv[]) {
+int main(int argc, char *argv[]) {
     int server_fd = -1, tun_dev_fd, over6_fd = -1;
 
     // init tun dev
@@ -149,17 +149,16 @@ int main(int argc, uint8_t *argv[]) {
     }
 
     // init server socket
-    int rc, on = 1, rcdsize = BUFFER_LENGTH;
-    uint8_t buffer[BUFFER_LENGTH];
+    int on = 1;
     struct sockaddr_in6 serveraddr, clientaddr;
-    int addrlen = sizeof(clientaddr);
-    uint8_t str[INET6_ADDRSTRLEN];
+    socklen_t addrlen = sizeof(clientaddr);
+    char str[INET6_ADDRSTRLEN];
     if ((server_fd = socket(AF_INET6, SOCK_STREAM, 0)) < 0) {
         perror("\nERROR socket() failed");
         goto failed;
     }
     if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR,
-                   (uint8_t *) &on, sizeof(on)) < 0) {
+                   (char *) &on, sizeof(on)) < 0) {
         perror("\nERROR setsockopt(SO_REUSEADDR) failed");
         goto failed;
     }
