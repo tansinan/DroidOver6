@@ -58,15 +58,15 @@ void over6Handle(int fd, uint8_t *buffer, int *used, bool *heartbeated) {
         //__android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "over6Handle fd=%d %d\n", fd,
         //                    len);
 
-        int ret = actual_size;
         if (data->type == TYPE_HEART) {
             __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "heart beat recv");
             *heartbeated = true;
         } else if (data->type == TYPE_REPLY) {
             // send packet to raw network
+            int ret;
             if (fd > 0 && // if tun not ready, just drop all packets
                     (ret = write(fd, data->data, actual_size)) < actual_size) {
-                __android_log_print(ANDROID_LOG_ERROR, "backend thread",
+                __android_log_print(ANDROID_LOG_WARN, "backend thread",
                                     "RAW size = %d err = %d", len, ret);
             }
             if (ret >= 0 && fd == tunDeviceFd) {
@@ -92,24 +92,26 @@ void over6Handle(int fd, uint8_t *buffer, int *used, bool *heartbeated) {
             __android_log_print(ANDROID_LOG_WARN, "backend thread", "Not implemented yet\n");
         }
 
-        memmove(buffer, buffer + ret + sizeof(over6Packet), *used - ret - sizeof(over6Packet));
-        *used -= ret + sizeof(over6Packet);
+        // If tun not writable or busy, data can and must be dropped to avoid delay
+        memmove(buffer, buffer + len, *used - len);
+        *used -= len;
     }
 }
 
 void rawToOver6(int fd, uint8_t *buffer, int *used) {
     if (!*used) return;  // no data
+    int transf = *used;
     over6Packet header;
     header.type = TYPE_REQUEST;
-    header.length = htonl(*used + sizeof(header));
+    header.length = htonl(transf + sizeof(header));
     int temp;
     if ((temp = write(fd, &header, sizeof(header))) < sizeof(header)) {
         __android_log_print(ANDROID_LOG_ERROR, "backend thread",
                             "->O6 size = %ul err = %d\n", sizeof(header), temp);
     }
-    if ((temp = write(fd, buffer, *used)) < 0) {
+    if ((temp = write(fd, buffer, transf)) < 0) {
         __android_log_print(ANDROID_LOG_ERROR, "backend thread",
-                            "->O6 size = %d err = %d\n", *used, temp);
+                            "->O6 size = %d err = %d\n", transf, temp);
     }
     //__android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "rawToOver6 fd=%d %d\n", fd, *used);
     memmove(buffer, buffer + temp, *used - temp);
