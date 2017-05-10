@@ -25,9 +25,13 @@ static const int PIPE_BUF_LEN = 65536 * 100;
 static const int SERVER_PORT = 13872;
 static const int BUFFER_LENGTH = 250;
 
+static const uint8_t TYPE_IP_REQUEST = 100;
+static const uint8_t TYPE_IP_REPLY   = 101;
 static const uint8_t TYPE_REQUEST = 102;
 static const uint8_t TYPE_REPLY = 103;
 static const uint8_t TYPE_HEART = 104;
+
+int server_fd = -1, tun_dev_fd, over6_fd = -1;
 
 typedef struct {
     uint32_t length;
@@ -91,6 +95,17 @@ static void over6Handle(int fd, uint8_t *buffer, int *used) {
             if ((ret = write(fd, data->data, actual_size)) < (int)actual_size) {
                 printf("\nERROR ->RAW size = %d err = %d\n", len, ret);
             }
+        } else if (data->type == TYPE_IP_REQUEST) {
+            char reply[] = "10.10.10.2 255.255.255.0 166.111.8.28 166.111.8.29 8.8.8.8";
+            over6Packet header;
+            header.type = TYPE_IP_REPLY;
+            header.length = htonl(sizeof(reply) + sizeof(header));
+            if (write(over6_fd, &header, sizeof(header)) < sizeof(header)) {
+                printf("\nERROR ->O6 ip reply\n");
+            }
+            if (write(over6_fd, reply, sizeof(reply)) < sizeof(reply)) {
+                printf("\nERROR ->O6 ip reply\n");
+            }
         } else {
             printf("\nWARN Not implemented yet\n");
         }
@@ -140,7 +155,6 @@ static int addToEpollFd(int epollFd, int *fds, int count) {
 }
 
 int main(int argc, char *argv[]) {
-    int server_fd = -1, tun_dev_fd, over6_fd = -1;
     int last_heartbeat = time(NULL);
 
     // init tun dev
