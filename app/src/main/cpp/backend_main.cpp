@@ -85,7 +85,7 @@ int backend_main(const char *hostName, int port,
             break;
         }
         int epollFd = createEpollFd(commandPipeFd, responsePipeFd);
-        if(epollFd < 0) {
+        if (epollFd < 0) {
             communication_set_status(BACKEND_STATE_DISCONNECTED);
             break;
         }
@@ -122,7 +122,7 @@ int backend_main(const char *hostName, int port,
                             addToEpollFd(epollFd, &tunFd, 1);
                             __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "addToEpoll");
                             tunDeviceFd = tunFd;
-                        } else if(ret == BACKEND_IPC_COMMAND_TERMINATE) {
+                        } else if (ret == BACKEND_IPC_COMMAND_TERMINATE) {
                             encounterError = true;
                             break;
                         }
@@ -157,11 +157,15 @@ int backend_main(const char *hostName, int port,
             }
             epoll_ctl(epollFd, EPOLL_CTL_MOD, remoteSocketFd, &event);
             if (encounterError) {
+                if (remoteSocketFd != -1) close(remoteSocketFd);
                 break;
             }
         }
     } while (0);
-    while (handle_frontend_command(commandPipeFd, responsePipeFd) != BACKEND_IPC_COMMAND_TERMINATE);
+
+    if (tunDeviceFd != -1) close(tunDeviceFd);
+    if (commandPipeFd != -1) close(commandPipeFd);
+
     __android_log_print(ANDROID_LOG_VERBOSE,
                         "4over6 backend", "Leaving backend_main", hostName, port);
     return 0;
