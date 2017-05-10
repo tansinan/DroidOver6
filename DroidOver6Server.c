@@ -116,18 +116,24 @@ static void over6Handle(int fd, uint8_t *buffer, int *used) {
     }
 }
 
-static void rawToOver6(int fd, uint8_t *buffer, int *used) {
+static void rawToOver6(int fd, uint8_t *buffer, int *used, int *remain) {
     if (!*used) return;  // no data
     int transf = *used;
     over6Packet header;
     header.type = TYPE_REPLY;
     header.length = htonl(transf + sizeof(header));
     int temp;
-    if ((temp = write(fd, &header, sizeof(header))) < (int)sizeof(header)) {
-        printf("ERROR ->O6 size = %lu err = %d\n", sizeof(header), temp);
-    }
-    if ((temp = write(fd, buffer, transf)) < 0) {
-        printf("ERROR ->O6 size = %d err = %d\n", transf, temp);
+    if ((*remain) == 0) {
+        if ((temp = write(fd, &header, sizeof(header))) < (int)sizeof(header)) {
+            printf("ERROR ->O6 size = %lu err = %d\n", sizeof(header), temp);
+        }
+        if ((temp = write(fd, buffer, transf)) < 0) {
+            printf("ERROR ->O6 size = %d err = %d\n", transf, temp);
+        }
+        (*remain) = transf - temp;
+    } else {
+        temp = write(fd, buffer, transf);
+        (*remain) -= temp;
     }
     printf(" [%lu] ", temp + sizeof(header));
     memmove(buffer, buffer + temp, *used - temp);
@@ -210,6 +216,7 @@ int main(int argc, char *argv[]) {
 
     uint8_t *ipBuffer = malloc(PIPE_BUF_LEN);
     int ipBufferUsed = 0;
+    int ipBufferRemain = 0;
     uint8_t *over6PacketBuffer = malloc(PIPE_BUF_LEN);
     int over6PacketBufferUsed = 0;
 
@@ -259,7 +266,7 @@ int main(int argc, char *argv[]) {
                 if (events[i].data.fd == tun_dev_fd) {
                     over6Handle(tun_dev_fd, over6PacketBuffer, &over6PacketBufferUsed);
                 } else if (events[i].data.fd == over6_fd) {
-                    rawToOver6(over6_fd, ipBuffer, &ipBufferUsed);
+                    rawToOver6(over6_fd, ipBuffer, &ipBufferUsed, &ipBufferRemain);
                 }
             }
         }
@@ -275,6 +282,21 @@ int main(int argc, char *argv[]) {
         }
         
         if (handled_read) printf("\n");
+
+        struct epoll_event event;
+        // Setup events for tun & remote server.
+        if (tun_dev_fd != -1) {
+            event.data.fd = tun_dev_fd;
+            event.events = EPOLLIN | EPOLLERR | EPOLLHUP;
+            if (over6PacketBufferUsed > 0 || (time(NULL) - last_heartbeat > 20))
+                event.events |= EPOLLOUT;
+            epoll_ctl(epollFd, EPOLL_CTL_MOD, tun_dev_fd, &event);
+        }
+        event.data.fd = over6_fd;
+        event.events = EPOLLIN | EPOLLERR | EPOLLHUP;
+        if (ipBufferUsed > 0)
+            event.events |= EPOLLOUT;
+        epoll_ctl(epollFd, EPOLL_CTL_MOD, over6_fd, &event);
     }
 
     finish:
