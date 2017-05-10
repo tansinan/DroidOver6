@@ -5,6 +5,8 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
+import android.content.SharedPreferences.Editor;
 import android.net.VpnService;
 import android.os.Handler;
 import android.os.Looper;
@@ -13,6 +15,7 @@ import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.preference.PreferenceManager;
 import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
@@ -76,15 +79,28 @@ public class MainActivity extends AppCompatActivity {
         buttonChangeConnectionState = (Button)findViewById(R.id.button_change_connection_state);
         inputHostName = (TextInputEditText)findViewById(R.id.edit_text_host_name);
         inputPort = (TextInputEditText)findViewById(R.id.edit_text_port);
-        inputHostName.setText(defaultHostName);
-        inputPort.setText(defaultPortText);
+        final SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(this);
+
+        // Set host name & port from defaults
+        String hostName = settings.getString("droidOver6_hostName", defaultHostName);
+        inputHostName.setText(hostName);
+        String portText = settings.getString("droidOver6_portText", defaultPortText);
+        inputPort.setText(portText);
+
         buttonChangeConnectionState.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if(uiModeForVpnStarted) {
+                // Update defaults
+                Editor edit = settings.edit();
+                edit.putString("droidOver6_hostName", inputHostName.getText().toString());
+                edit.apply();
+                edit = settings.edit();
+                edit.putString("droidOver6_portText", inputPort.getText().toString());
+                edit.apply();
+
+                if (uiModeForVpnStarted) {
                     stopVPNService();
-                }
-                else {
+                } else {
                     prepareStartVPN();
                 }
             }
