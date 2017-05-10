@@ -13,6 +13,7 @@ static int tunDeviceFd = -1;
 
 static uint8_t *tunDeviceBuffer = NULL;
 int tunDeviceBufferUsed = 0;
+int tunDeviceBufferRemain = 0;
 static uint8_t *over6PacketBuffer = NULL;
 int over6PacketBufferUsed = 0;
 
@@ -119,20 +120,26 @@ void over6Handle(int fd, uint8_t *buffer, int *used, bool *heartbeated) {
     }
 }
 
-void rawToOver6(int fd, uint8_t *buffer, int *used) {
+static void rawToOver6(int fd, uint8_t *buffer, int *used, int *remain) {
     if (!*used) return;  // no data
     int transf = *used;
     over6Packet header;
     header.type = TYPE_REQUEST;
     header.length = endian_local_to_little_32(transf + sizeof(header));
     int temp;
-    if ((temp = write(fd, &header, sizeof(header))) < sizeof(header)) {
-        __android_log_print(ANDROID_LOG_ERROR, "backend thread",
-                            "->O6 size = %ul err = %d\n", sizeof(header), temp);
-    }
-    if ((temp = write(fd, buffer, transf)) < 0) {
-        __android_log_print(ANDROID_LOG_ERROR, "backend thread",
-                            "->O6 size = %d err = %d\n", transf, temp);
+    if ((*remain) == 0) {
+        if ((temp = write(fd, &header, sizeof(header))) < (int)sizeof(header)) {
+            __android_log_print(ANDROID_LOG_ERROR, "backend thread",
+                                "->O6 size = %ul err = %d\n", sizeof(header), temp);
+        }
+        if ((temp = write(fd, buffer, transf)) < 0) {
+            __android_log_print(ANDROID_LOG_ERROR, "backend thread",
+                                "->O6 size = %d err = %d\n", transf, temp);
+        }
+        (*remain) = transf - temp;
+    } else {
+        temp = write(fd, buffer, transf);
+        (*remain) -= temp;
     }
     //__android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "rawToOver6 fd=%d %d\n", fd, *used);
     memmove(buffer, buffer + temp, *used - temp);
@@ -145,6 +152,7 @@ void communication_init(int _remoteSocketFd) {
     //TODO: Free memory on thread exit.
     tunDeviceBuffer = new uint8_t[PIPE_BUF_LEN];
     tunDeviceBufferUsed = 0;
+    tunDeviceBufferRemain = 0;
     over6PacketBuffer = new uint8_t[PIPE_BUF_LEN];
     over6PacketBufferUsed = 0;
     totalInBytes = 0;
@@ -178,7 +186,7 @@ void communication_handle_4over6_socket_read() {
 }
 
 void communication_handle_4over6_socket_write() {
-    rawToOver6(remoteSocketFd, tunDeviceBuffer, &tunDeviceBufferUsed);
+    rawToOver6(remoteSocketFd, tunDeviceBuffer, &tunDeviceBufferUsed, &tunDeviceBufferRemain);
 }
 
 void communication_send_heartbeat() {
