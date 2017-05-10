@@ -102,6 +102,8 @@ void communication_init(int _remoteSocketFd) {
     tunDeviceBufferUsed = 0;
     over6PacketBuffer = new uint8_t[PIPE_BUF_LEN];
     over6PacketBufferUsed = 0;
+    totalInBytes = 0;
+    totalOutBytes = 0;
 }
 
 int communication_get_status() {

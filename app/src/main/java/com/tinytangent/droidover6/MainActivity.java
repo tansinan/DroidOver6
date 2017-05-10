@@ -159,6 +159,8 @@ public class MainActivity extends AppCompatActivity {
         intent.putExtra("host_name", inputHostName.getText().toString());
         intent.putExtra("port", Integer.parseInt(inputPort.getText().toString()));
         startService(intent);
+        inBytes = 0;
+        outBytes = 0;
         updateGUI();
     }
 

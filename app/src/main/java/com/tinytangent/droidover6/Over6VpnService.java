@@ -109,8 +109,15 @@ public class Over6VpnService extends VpnService {
             int i = 0;
 
             public void onTick(long millisUntilFinished) {
-
-                if (vpnInterface == null) {
+                if(!backendThread.isAlive())
+                {
+                    Intent intent = new Intent(BROADCAST_VPN_STATE);
+                    intent.putExtra("status_code", BackendIPC.BACKEND_STATE_DISCONNECTED);
+                    LocalBroadcastManager.getInstance(Over6VpnService.this).sendBroadcast(intent);
+                    Over6VpnService.this.reliableStop();
+                    return;
+                }
+                else if (vpnInterface == null) {
                     try {
                         commandStream.write(BACKEND_IPC_COMMAND_CONFIGURATION);
                         byte[] data = readExactBytes(responseStream, 20);
@@ -175,13 +182,13 @@ public class Over6VpnService extends VpnService {
 
     public void reliableStop() {
         try {
+            timer.cancel();
             commandStream.write(BACKEND_IPC_COMMAND_TERMINATE);
             if (vpnInterface != null) {
                 Over6VpnService.getInstance().vpnInterface.close();
             }
             Over6VpnService.getInstance().commandStream.close();
             Over6VpnService.getInstance().responseStream.close();
-            timer.cancel();
         } catch (Exception e) {
 
         }

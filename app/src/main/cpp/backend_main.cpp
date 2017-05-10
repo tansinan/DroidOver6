@@ -180,7 +180,6 @@ failed:
     if (tunDeviceFd >= 0) close(tunDeviceFd);
     if (commandPipeFd >= 0) close(commandPipeFd);
     communication_set_status(BACKEND_STATE_DISCONNECTED);
-    // TODO: frontend not updated when disconnected
 
     __android_log_print(ANDROID_LOG_VERBOSE,
                         "4over6 backend", "Leaving backend_main");
