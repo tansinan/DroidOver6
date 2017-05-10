@@ -70,7 +70,7 @@ static int readToBuf(int fd, uint8_t *buffer, int *used) {
         total += ret;
     }
     printf(" >%d< ", total);
-    return ret;
+    return total ? total : ret;
 }
 
 static void over6Handle(int fd, uint8_t *buffer, int *used) {
@@ -226,10 +226,15 @@ int main(int argc, char *argv[]) {
 
             if (events[i].events & EPOLLIN) {
                 if (events[i].data.fd == tun_dev_fd) {
-                    readToBuf(tun_dev_fd, ipBuffer, &ipBufferUsed);
+                    int ret = readToBuf(tun_dev_fd, ipBuffer, &ipBufferUsed);
+                    if (ret == EOF) printf("WARN tun is not ready\n");
                     handled_read += 1;
                 } else if (events[i].data.fd == over6_fd) {
-                    readToBuf(over6_fd, over6PacketBuffer, &over6PacketBufferUsed);
+                    int ret = readToBuf(over6_fd, over6PacketBuffer, &over6PacketBufferUsed);
+                    if (ret == 0) {
+                        printf("INFO client disconnected\n");
+                        goto finish;
+                    }
                     handled_read += 1;
                 }
             }
@@ -244,12 +249,14 @@ int main(int argc, char *argv[]) {
         }
         if (handled_read) printf("\nHandled read: %d\n", handled_read);
     }
+
+    finish:
+    if (server_fd != -1) close(server_fd);
+    if (over6_fd != -1) close(over6_fd);
+    if (tun_dev_fd != -1) close(tun_dev_fd);
     return 0;
 
     failed:
-    /***********************************************************************/
-    /* Close down any open socket descriptors                              */
-    /***********************************************************************/
     if (server_fd != -1) close(server_fd);
     if (over6_fd != -1) close(over6_fd);
     if (tun_dev_fd != -1) close(tun_dev_fd);
