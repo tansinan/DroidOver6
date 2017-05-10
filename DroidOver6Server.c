@@ -84,7 +84,7 @@ static void over6Handle(int fd, uint8_t *buffer, int *used) {
         size_t actual_size = len - sizeof(over6Packet);
 
         if (data->type == TYPE_HEART) {
-            // ignore
+            printf("\nINFO heart beat recv\n");
         } else if (data->type == TYPE_REQUEST) {
             // send packet to raw network
             int ret = 0;
@@ -141,6 +141,7 @@ static int addToEpollFd(int epollFd, int *fds, int count) {
 
 int main(int argc, char *argv[]) {
     int server_fd = -1, tun_dev_fd, over6_fd = -1;
+    int last_heartbeat = time(NULL);
 
     // init tun dev
     if (argc < 2) {
@@ -210,8 +211,8 @@ int main(int argc, char *argv[]) {
 
     epoll_event *events = (epoll_event *) calloc(10, sizeof(epoll_event));
     // Event loop
-    for (;;) {
-        int eventCount = epoll_wait(epollFd, events, 10, -1);
+    for (; ; ) {
+        int eventCount = epoll_wait(epollFd, events, 10, 20);
         int i, handled_read = 0;
         for (i = 0; i < eventCount; i++) {
             if ((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP)) {
@@ -247,7 +248,18 @@ int main(int argc, char *argv[]) {
                 }
             }
         }
-        if (handled_read) printf("\nHandled read: %d\n", handled_read);
+        
+        if (time(NULL) - last_heartbeat > 20) {
+            over6Packet header;
+            header.type = TYPE_HEART;
+            header.length = htonl(sizeof(header));
+            if ((write(over6_fd, &header, sizeof(header))) < (int)sizeof(header)) {
+                printf("\nWARN failed to send heartbeat\n");
+            }
+            last_heartbeat = time(NULL);
+        }
+        
+        if (handled_read) printf("\n");
     }
 
     finish:
