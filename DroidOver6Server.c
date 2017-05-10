@@ -22,7 +22,7 @@ typedef struct epoll_event epoll_event;
 
 static const int IP_PACKET_MAX_SIZE = 65536;
 static const int PIPE_BUF_LEN = 65536 * 100;
-static const int SERVER_PORT = 13872;
+static const int SERVER_PORT = 5678;
 static const int BUFFER_LENGTH = 250;
 
 static const uint8_t TYPE_IP_REQUEST = 100;
@@ -64,6 +64,26 @@ static int tunOpen(char *devname) {
     return fd;
 }
 
+static uint32_t endian_little_to_local_32(uint32_t val) {
+    uint8_t *buffer = (uint8_t *)&val;
+    uint32_t ret = 0;
+    for(int i = 0; i < 4; i++) {
+        ret += (buffer[i] << (8 * i));
+    }
+    return ret;
+};
+
+static uint32_t endian_local_to_little_32(uint32_t val) {
+    uint32_t ret;
+    uint8_t *data = (uint8_t *)&ret;
+    for(int i = 0; i < 4; i++)
+    {
+        data[i] = (uint8_t)val;
+        val >>= 8;
+    }
+    return ret;
+}
+
 static int readToBuf(int fd, uint8_t *buffer, int *used) {
     int total = 0, ret = 0;
     const size_t READ_SIZE = IP_PACKET_MAX_SIZE;
@@ -82,7 +102,7 @@ static void over6Handle(int fd, uint8_t *buffer, int *used) {
         if ((*used) < 4) return;  // need more read
 
         over6Packet *data = (over6Packet *) buffer;
-        uint32_t len = ntohl(data->length);
+        uint32_t len = endian_little_to_local_32(data->length);
         if ((uint32_t)*used < len) return; // packet not complete
 
         size_t actual_size = len - sizeof(over6Packet);
@@ -99,7 +119,7 @@ static void over6Handle(int fd, uint8_t *buffer, int *used) {
             char reply[] = "10.10.10.2 255.255.255.0 166.111.8.28 166.111.8.29 8.8.8.8";
             over6Packet header;
             header.type = TYPE_IP_REPLY;
-            header.length = htonl(sizeof(reply) + sizeof(header));
+            header.length = endian_local_to_little_32(sizeof(reply) + sizeof(header));
             if (write(over6_fd, &header, sizeof(header)) < (int)sizeof(header)) {
                 printf("\nERROR ->O6 ip reply\n");
             }
@@ -121,7 +141,7 @@ static void rawToOver6(int fd, uint8_t *buffer, int *used, int *remain) {
     int transf = *used;
     over6Packet header;
     header.type = TYPE_REPLY;
-    header.length = htonl(transf + sizeof(header));
+    header.length = endian_local_to_little_32(transf + sizeof(header));
     int temp;
     if ((*remain) == 0) {
         if ((temp = write(fd, &header, sizeof(header))) < (int)sizeof(header)) {
@@ -274,7 +294,7 @@ int main(int argc, char *argv[]) {
         if (time(NULL) - last_heartbeat > 20) {
             over6Packet header;
             header.type = TYPE_HEART;
-            header.length = htonl(sizeof(header));
+            header.length = endian_local_to_little_32(sizeof(header));
             if ((write(over6_fd, &header, sizeof(header))) < (int)sizeof(header)) {
                 printf("\nWARN failed to send heartbeat\n");
             }

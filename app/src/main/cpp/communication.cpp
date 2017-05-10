@@ -46,17 +46,38 @@ void communication_set_tun_fd(int tunFd) {
     tunDeviceFd = tunFd;
 }
 
+static uint32_t endian_little_to_local_32(uint32_t val) {
+    uint8_t *buffer = (uint8_t *)&val;
+    uint32_t ret = 0;
+    for(int i = 0; i < 4; i++) {
+        ret += (buffer[i] << (8 * i));
+    }
+    return ret;
+};
+
+static uint32_t endian_local_to_little_32(uint32_t val) {
+    uint32_t ret;
+    uint8_t *data = (uint8_t *)&ret;
+    for(int i = 0; i < 4; i++)
+    {
+        data[i] = (uint8_t)val;
+        val >>= 8;
+    }
+    return ret;
+}
+
 void over6Handle(int fd, uint8_t *buffer, int *used, bool *heartbeated) {
     for (; ; ) {  // for all packets
         if ((*used) < sizeof(over6Packet)) return;  // need more read
 
         over6Packet *data = (over6Packet *) buffer;
-        uint32_t len = ntohl(data->length);
+        uint32_t len = endian_little_to_local_32(data->length);
+
         if (*used < len) return; // packet not complete
 
         size_t actual_size = len - sizeof(over6Packet);
         //__android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "over6Handle fd=%d %d\n", fd,
-        //                    len);
+        //                   len);
 
         if (data->type == TYPE_HEART) {
             __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "heart beat recv");
@@ -103,7 +124,7 @@ void rawToOver6(int fd, uint8_t *buffer, int *used) {
     int transf = *used;
     over6Packet header;
     header.type = TYPE_REQUEST;
-    header.length = htonl(transf + sizeof(header));
+    header.length = endian_local_to_little_32(transf + sizeof(header));
     int temp;
     if ((temp = write(fd, &header, sizeof(header))) < sizeof(header)) {
         __android_log_print(ANDROID_LOG_ERROR, "backend thread",
@@ -120,6 +141,7 @@ void rawToOver6(int fd, uint8_t *buffer, int *used) {
 
 void communication_init(int _remoteSocketFd) {
     remoteSocketFd = _remoteSocketFd;
+    tunDeviceFd = -1;
     //TODO: Free memory on thread exit.
     tunDeviceBuffer = new uint8_t[PIPE_BUF_LEN];
     tunDeviceBufferUsed = 0;
@@ -162,7 +184,7 @@ void communication_handle_4over6_socket_write() {
 void communication_send_heartbeat() {
     over6Packet header;
     header.type = TYPE_HEART;
-    header.length = htonl(sizeof(header));
+    header.length = endian_local_to_little_32(sizeof(header));
     if (write(remoteSocketFd, &header, sizeof(header)) < sizeof(header)) {
         __android_log_print(ANDROID_LOG_ERROR, "backend thread",
                             "->O6 failed to send heartbeat");
@@ -180,7 +202,7 @@ void communication_get_ip_confiugration() {
     // Send packet to request IP configuration
     over6Packet header;
     header.type = TYPE_IP_REQUEST;
-    header.length = htonl(sizeof(header));
+    header.length = endian_local_to_little_32(sizeof(header));
     if (write(remoteSocketFd, &header, sizeof(header)) < sizeof(header)) {
         __android_log_print(ANDROID_LOG_ERROR, "backend thread",
                             "->O6 failed to send IP request");

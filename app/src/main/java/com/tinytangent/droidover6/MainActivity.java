@@ -37,7 +37,7 @@ public class MainActivity extends AppCompatActivity {
     protected long outBytes = 0;
 
     protected static String defaultHostName = "2400:8500:1301:736:a133:130:98:2310";
-    protected static String defaultPortText = "13872";
+    protected static String defaultPortText = "5678";
 
     protected BroadcastReceiver vpnStateReceiver = new BroadcastReceiver() {
         @Override
