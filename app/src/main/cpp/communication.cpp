@@ -17,6 +17,9 @@ int over6PacketBufferUsed = 0;
 
 static int currentStatus = BACKEND_STATE_CONNECTING;
 
+static uint64_t totalInBytes = 0;
+static uint64_t totalOutBytes = 0;
+
 // TODO: Define stored IP/DNS info.
 
 static int readToBuf(int fd, uint8_t *buffer, int *used) {
@@ -27,6 +30,9 @@ static int readToBuf(int fd, uint8_t *buffer, int *used) {
         if (ret <= 0) break;
         (*used) += ret;
         total += ret;
+    }
+    if (fd == tunDeviceFd) {
+        totalOutBytes += total;
     }
     return ret;
 }
@@ -57,6 +63,9 @@ void over6Handle(int fd, uint8_t *buffer, int *used, bool *heartbeated) {
                     (ret = write(fd, data->data, actual_size)) < actual_size) {
                 __android_log_print(ANDROID_LOG_ERROR, "backend thread",
                                     "RAW size = %d err = %d", len, ret);
+            }
+            if (ret >= 0 && fd == tunDeviceFd) {
+                totalInBytes += ret;
             }
         } else {
             __android_log_print(ANDROID_LOG_WARN, "backend thread", "Not implemented yet\n");
@@ -144,6 +153,7 @@ void communication_get_ip_confiugration() {
     // TODO: Returns IPv4 Configuration
 }
 
-void communication_get_statistics() {
-    // TODO: Returns network statistics
+void communication_get_statistics(uint64_t *inBytes, uint64_t *outBytes) {
+    (*inBytes) = totalInBytes;
+    (*outBytes) = totalOutBytes;
 }

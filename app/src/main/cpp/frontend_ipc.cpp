@@ -22,16 +22,17 @@ int handle_frontend_command(int commandPipeFd, int responsePipeFd) {
         uint8_t status = communication_get_status();
         write(responsePipeFd, &status, 1);
     } else if (command == BACKEND_IPC_COMMAND_STATISTICS) {
-        // TODO: This is a stub. Get them from communication module.
-        int64_t inBytes = 12345;
-        int64_t outBytes = 67890;
+        uint64_t inBytes, outBytes;
+        communication_get_statistics(&inBytes, &outBytes);
+        inBytes = ntohq(inBytes);
+        outBytes = ntohq(outBytes);
         write(responsePipeFd, &inBytes, sizeof(inBytes));
         write(responsePipeFd, &outBytes, sizeof(outBytes));
     } else if (command == BACKEND_IPC_COMMAND_CONFIGURATION) {
         // TODO: This is a stub. Get them from communication module.
         uint8_t ip[4] = {10, 10, 10, 2};
         uint8_t mask[4] = {255, 255, 255, 0};
-        uint8_t dns1[4] = {114, 114, 114, 114};
+        uint8_t dns1[4] = {166, 111, 8, 28};
         uint8_t dns2[4] = {166, 111, 8, 29};
         uint8_t dns3[4] = {166, 111, 8, 30};
         write(responsePipeFd, ip, 4);

@@ -53,6 +53,6 @@ int communication_is_ip_confiugration_recevied();
 
 void communication_get_ip_confiugration();
 
-void communication_get_statistics();
+void communication_get_statistics(uint64_t *inBytes, uint64_t *outBytes);
 
 #endif //DROIDOVER6_COMMUNICATION_H_H

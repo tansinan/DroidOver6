@@ -8,16 +8,17 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.Editor;
 import android.net.VpnService;
-import android.os.Handler;
-import android.os.Looper;
 import android.support.design.widget.TextInputEditText;
 import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
+import android.text.format.Formatter;
 import android.view.View;
 import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import static android.widget.Toast.LENGTH_SHORT;
@@ -29,18 +30,20 @@ public class MainActivity extends AppCompatActivity {
     protected Button buttonChangeConnectionState = null;
     protected TextInputEditText inputHostName = null;
     protected TextInputEditText inputPort = null;
+    protected TextView textViewOutBytes = null;
+    protected TextView textViewInBytes = null;
+    protected LinearLayout layoutNetworkStatistics = null;
+    protected long inBytes = 0;
+    protected long outBytes = 0;
 
     protected static String defaultHostName = "2400:8500:1301:736:a133:130:98:2310";
     protected static String defaultPortText = "13872";
 
-    protected BroadcastReceiver vpnStateReceiver = new BroadcastReceiver()
-    {
+    protected BroadcastReceiver vpnStateReceiver = new BroadcastReceiver() {
         @Override
-        public void onReceive(Context context, Intent intent)
-        {
-            updateGUI();
-            if(intent.getAction().equals(Over6VpnService.BROADCAST_VPN_STATE))  {
-                if(intent.getIntExtra("status_code", -1) == BackendIPC.BACKEND_STATE_DISCONNECTED) {
+        public void onReceive(Context context, Intent intent) {
+            if (intent.getAction().equals(Over6VpnService.BROADCAST_VPN_STATE)) {
+                if (intent.getIntExtra("status_code", -1) == BackendIPC.BACKEND_STATE_DISCONNECTED) {
                     AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
 
                     builder.setMessage("An error occurred. Disconnected from server")
@@ -53,22 +56,32 @@ public class MainActivity extends AppCompatActivity {
                             });
                     AlertDialog dialog = builder.create();
                     dialog.show();
+                } else {
+                    MainActivity.this.inBytes = intent.getLongExtra("in_bytes", 0);
+                    MainActivity.this.outBytes = intent.getLongExtra("out_bytes", 0);
                 }
             }
+            updateGUI();
         }
     };
 
     protected void updateGUI() {
-        if(ServiceUtil.isServiceRunning(this, Over6VpnService.class)) {
+        if (ServiceUtil.isServiceRunning(this, Over6VpnService.class)) {
             uiModeForVpnStarted = true;
             buttonChangeConnectionState.setText("Disconnect");
             inputHostName.setEnabled(false);
             inputPort.setEnabled(false);
+            layoutNetworkStatistics.setVisibility(View.VISIBLE);
+            textViewOutBytes.setText("In: " +
+                    Formatter.formatShortFileSize(MainActivity.this, inBytes));
+            textViewInBytes.setText("Out: " +
+                    Formatter.formatShortFileSize(MainActivity.this, outBytes));
         } else {
             uiModeForVpnStarted = false;
             buttonChangeConnectionState.setText("Connect");
             inputHostName.setEnabled(true);
             inputPort.setEnabled(true);
+            layoutNetworkStatistics.setVisibility(View.GONE);
         }
     }
 
@@ -76,9 +89,13 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        buttonChangeConnectionState = (Button)findViewById(R.id.button_change_connection_state);
-        inputHostName = (TextInputEditText)findViewById(R.id.edit_text_host_name);
-        inputPort = (TextInputEditText)findViewById(R.id.edit_text_port);
+        buttonChangeConnectionState = (Button) findViewById(R.id.button_change_connection_state);
+        inputHostName = (TextInputEditText) findViewById(R.id.edit_text_host_name);
+        inputPort = (TextInputEditText) findViewById(R.id.edit_text_port);
+        textViewOutBytes = (TextView) findViewById(R.id.text_view_out_bytes);
+        textViewInBytes = (TextView) findViewById(R.id.text_view_in_bytes);
+        layoutNetworkStatistics = (LinearLayout) findViewById(R.id.linear_layout_network_statistics);
+
         final SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(this);
 
         // Set host name & port from defaults
@@ -146,7 +163,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     protected void stopVPNService() {
-        if(!ServiceUtil.isServiceRunning(this, Over6VpnService.class)) {
+        if (!ServiceUtil.isServiceRunning(this, Over6VpnService.class)) {
             updateGUI();
             return;
         }

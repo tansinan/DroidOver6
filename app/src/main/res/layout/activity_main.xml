@@ -61,6 +61,30 @@
         </android.support.design.widget.TextInputLayout>
 
 
+    <LinearLayout
+        android:id="@+id/linear_layout_network_statistics"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="10dp">
+
+        <TextView
+            android:id="@+id/text_view_out_bytes"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_weight="0.5"
+            android:text="Upload"
+            android:textAppearance="@style/TextAppearance.AppCompat.Medium" />
+
+        <TextView
+            android:id="@+id/text_view_in_bytes"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_weight="0.5"
+            android:text="Download"
+            android:textAppearance="@style/TextAppearance.AppCompat.Medium" />
+    </LinearLayout>
+
     <Button
         android:id="@+id/button_change_connection_state"
         style="@style/Widget.AppCompat.Button.Colored"
