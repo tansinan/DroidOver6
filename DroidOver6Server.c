@@ -110,11 +110,12 @@ static void rawToOver6(int fd, uint8_t *buffer, int *used) {
     if ((temp = write(fd, &header, sizeof(header))) < (int)sizeof(header)) {
         printf("ERROR ->O6 size = %lu err = %d\n", sizeof(header), temp);
     }
-    if ((temp = write(fd, buffer, *used)) < (int)*used) {
+    if ((temp = write(fd, buffer, *used)) < 0) {
         printf("ERROR ->O6 size = %d err = %d\n", *used, temp);
     }
-    printf(" [%lu] ", *used + sizeof(header));
-    *used = 0;
+    printf(" [%lu] ", temp + sizeof(header));
+    memmove(buffer, buffer + temp, *used - temp);
+    *used -= temp;
 }
 
 static int createEpollFd() {
@@ -213,7 +214,6 @@ int main(int argc, char *argv[]) {
         int eventCount = epoll_wait(epollFd, events, 10, -1);
         int i, handled_read = 0;
         for (i = 0; i < eventCount; i++) {
-            // TODO failed to detect client disconnect
             if ((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP)) {
                 printf("\nERROR epoll event: err or hup\n");
                 if (events[i].data.fd == over6_fd) printf("ERROR on over6\n");

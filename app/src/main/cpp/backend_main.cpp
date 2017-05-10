@@ -47,7 +47,7 @@ static int connectTo4Over6Server(const char *hostName, int port) {
     return socketFd;
 }
 
-static int createEpollFd(int commandPipeFd, int responsePipeFd) {
+static int createEpollFd() {
     int epollFd = epoll_create(1);
     return epollFd;
 }
@@ -64,7 +64,7 @@ static int addToEpollFd(int epollFd, int *fds, int count) {
         }
         struct epoll_event event;
         event.data.fd = fds[i];
-        event.events = EPOLLIN | EPOLLOUT;
+        event.events = EPOLLIN | EPOLLOUT | EPOLLERR | EPOLLHUP;
         if (epoll_ctl(epollFd, EPOLL_CTL_ADD, fds[i], &event) == -1) {
             return 0;
         }
@@ -75,96 +75,83 @@ static int addToEpollFd(int epollFd, int *fds, int count) {
 
 int backend_main(const char *hostName, int port,
                  int commandPipeFd, int responsePipeFd) {
-    int tunDeviceFd = -1;
+    int tunDeviceFd = -1, remoteSocketFd = -1;
+    int epollFd = -1;
+    epoll_event *events = NULL;
+    int fds[2];
+
     __android_log_print(ANDROID_LOG_VERBOSE,
                         "4over6 backend", "Entering backend_main @ %s:%d", hostName, port);
-    do {
-        int remoteSocketFd = connectTo4Over6Server(hostName, port);
-        if (remoteSocketFd < 0) {
-            communication_set_status(BACKEND_STATE_DISCONNECTED);
-            break;
-        }
-        int epollFd = createEpollFd(commandPipeFd, responsePipeFd);
-        if (epollFd < 0) {
-            communication_set_status(BACKEND_STATE_DISCONNECTED);
-            break;
-        }
-        int fds[2] = {commandPipeFd, remoteSocketFd};
-        if (!addToEpollFd(epollFd, fds, 2)) {
-            communication_set_status(BACKEND_STATE_DISCONNECTED);
-            break;
-        }
 
-        communication_init(remoteSocketFd);
-        epoll_event *events = (epoll_event *) calloc(3, sizeof(epoll_event));
-        communication_set_status(BACKEND_STATE_CONNECTED);
+    if ((remoteSocketFd = connectTo4Over6Server(hostName, port)) < 0) goto failed;
+    if ((epollFd = createEpollFd()) < 0) goto failed;
 
-        // Event loop
-        // TODO: To sent heartbeat packet, an timer fd needs to be created.
-        for (;;) {
-            bool encounterError = false;
-            int eventCount = epoll_wait(epollFd, events, 3, -1);
-            for (int i = 0; i < eventCount; i++) {
+    fds[0] = commandPipeFd; fds[1] = remoteSocketFd;
+    if (!addToEpollFd(epollFd, fds, 2)) goto failed;
 
-                if ((events[i].events & EPOLLERR) ||
-                        (events[i].events & EPOLLHUP) ||
-                        (!(events[i].events & (EPOLLIN | EPOLLOUT)))) {
-                    __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "epoll error\n");
-                    communication_set_status(BACKEND_STATE_DISCONNECTED);
-                    encounterError = true;
-                    break;
-                }
+    communication_init(remoteSocketFd);
+    events = (epoll_event *) calloc(10, sizeof(epoll_event));
+    communication_set_status(BACKEND_STATE_CONNECTED);
 
-                if (events[i].events & EPOLLIN) {
-                    if (events[i].data.fd == commandPipeFd) {
-                        int ret = handle_frontend_command(commandPipeFd, responsePipeFd);
-                        if (ret == BACKEND_IPC_COMMAND_SET_TUNNEL_FD) {
-                            addToEpollFd(epollFd, &tunFd, 1);
-                            __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "addToEpoll");
-                            tunDeviceFd = tunFd;
-                        } else if (ret == BACKEND_IPC_COMMAND_TERMINATE) {
-                            encounterError = true;
-                            break;
-                        }
-                    } else if (events[i].data.fd == tunDeviceFd) {
-                        communication_handle_tun_read();
-                    } else if (events[i].data.fd == remoteSocketFd) {
-                        communication_handle_4over6_socket_read();
+    // Event loop
+    // TODO: heartbeat
+    for (; ; ) {
+        int eventCount = epoll_wait(epollFd, events, 10, -1);
+        for (int i = 0; i < eventCount; i++) {
+
+            if ((events[i].events & EPOLLERR) ||
+                (events[i].events & EPOLLHUP)) {
+                __android_log_print(ANDROID_LOG_VERBOSE, "backend thread",
+                                    "epoll event: err or hup\n");
+                goto failed;
+            }
+
+            if (events[i].events & EPOLLIN) {
+                if (events[i].data.fd == commandPipeFd) {
+                    int ret = handle_frontend_command(commandPipeFd, responsePipeFd);
+                    if (ret == BACKEND_IPC_COMMAND_SET_TUNNEL_FD) {
+                        addToEpollFd(epollFd, &tunFd, 1);
+                        tunDeviceFd = tunFd;
+                    } else if (ret == BACKEND_IPC_COMMAND_TERMINATE) {
+                        goto failed;
                     }
-                } else if (events[i].events & EPOLLOUT) {
-                    if (events[i].data.fd == tunDeviceFd) {
-                        communication_handle_tun_write();
-                    } else if (events[i].data.fd == remoteSocketFd) {
-                        communication_handle_4over6_socket_write();
-                    }
+                } else if (events[i].data.fd == tunDeviceFd) {
+                    communication_handle_tun_read();
+                } else if (events[i].data.fd == remoteSocketFd) {
+                    communication_handle_4over6_socket_read();
                 }
             }
-            struct epoll_event event;
-            if (tunDeviceFd != -1) {
-                event.data.fd = tunDeviceFd;
-                if (over6PacketBufferUsed > 0) {
-                    event.events = EPOLLIN | EPOLLOUT | EPOLLERR | EPOLLHUP;
-                } else {
-                    event.events = EPOLLIN | EPOLLERR | EPOLLHUP;
+
+            if (events[i].events & EPOLLOUT) {
+                if (events[i].data.fd == tunDeviceFd) {
+                    communication_handle_tun_write();
+                } else if (events[i].data.fd == remoteSocketFd) {
+                    communication_handle_4over6_socket_write();
                 }
-                epoll_ctl(epollFd, EPOLL_CTL_MOD, tunDeviceFd, &event);
-            }
-            event.data.fd = remoteSocketFd;
-            if(tunDeviceBufferUsed > 0) {
-                event.events = EPOLLIN | EPOLLOUT | EPOLLERR | EPOLLHUP;
-            } else {
-                event.events = EPOLLIN | EPOLLERR | EPOLLHUP;
-            }
-            epoll_ctl(epollFd, EPOLL_CTL_MOD, remoteSocketFd, &event);
-            if (encounterError) {
-                if (remoteSocketFd != -1) close(remoteSocketFd);
-                break;
             }
         }
-    } while (0);
 
-    if (tunDeviceFd != -1) close(tunDeviceFd);
-    if (commandPipeFd != -1) close(commandPipeFd);
+        struct epoll_event event;
+        // Setup events for tun & remote server.
+        if (tunDeviceFd != -1) {
+            event.data.fd = tunDeviceFd;
+            event.events = EPOLLIN | EPOLLERR | EPOLLHUP;
+            if (over6PacketBufferUsed > 0)
+                event.events |= EPOLLOUT;
+            epoll_ctl(epollFd, EPOLL_CTL_MOD, tunDeviceFd, &event);
+        }
+        event.data.fd = remoteSocketFd;
+        event.events = EPOLLIN | EPOLLERR | EPOLLHUP;
+        if (tunDeviceBufferUsed > 0)
+            event.events |= EPOLLOUT;
+        epoll_ctl(epollFd, EPOLL_CTL_MOD, remoteSocketFd, &event);
+    }
+
+failed:
+    if (remoteSocketFd >= 0) close(remoteSocketFd);
+    if (tunDeviceFd >= 0) close(tunDeviceFd);
+    if (commandPipeFd >= 0) close(commandPipeFd);
+    communication_set_status(BACKEND_STATE_DISCONNECTED);
 
     __android_log_print(ANDROID_LOG_VERBOSE,
                         "4over6 backend", "Leaving backend_main", hostName, port);

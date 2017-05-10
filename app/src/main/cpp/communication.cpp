@@ -75,12 +75,13 @@ void rawToOver6(int fd, uint8_t *buffer, int *used) {
         __android_log_print(ANDROID_LOG_ERROR, "backend thread",
                             "->O6 size = %d err = %d\n", sizeof(header), temp);
     }
-    if ((temp = write(fd, buffer, *used)) < *used) {
+    if ((temp = write(fd, buffer, *used)) < 0) {
         __android_log_print(ANDROID_LOG_ERROR, "backend thread",
                             "->O6 size = %d err = %d\n", *used, temp);
     }
     __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "rawToOver6 fd=%d %d\n", fd, *used);
-    *used = 0;
+    memmove(buffer, buffer + temp, *used - temp);
+    *used -= temp;
 }
 
 void communication_init(int _remoteSocketFd) {

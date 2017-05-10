@@ -44,7 +44,8 @@ int handle_frontend_command(int commandPipeFd, int responsePipeFd) {
             int ret = read(commandPipeFd, &tunFd, 4);
             if (ret > 0) {
                 tunFd = ntohl(tunFd);
-                __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "communication_set_tun_fd");
+                __android_log_print(ANDROID_LOG_VERBOSE, "backend thread",
+                                    "communication set tun_fd");
                 communication_set_tun_fd(tunFd);
                 break;
             }
