@@ -35,8 +35,8 @@ void communication_set_tun_fd(int tunFd) {
     tunDeviceFd = tunFd;
 }
 
-void over6Handle(int fd, uint8_t *buffer, int *used) {
-    for (;;) {  // for all packets
+void over6Handle(int fd, uint8_t *buffer, int *used, bool *heartbeated) {
+    for (; ; ) {  // for all packets
         if ((*used) < 4) return;  // need more read
 
         over6Packet *data = (over6Packet *) buffer;
@@ -44,15 +44,17 @@ void over6Handle(int fd, uint8_t *buffer, int *used) {
         if (*used < len) return; // packet not complete
 
         size_t actual_size = len - sizeof(over6Packet);
-        __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "over6Handle fd=%d %d\n", fd,
-                            len);
+        //__android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "over6Handle fd=%d %d\n", fd,
+        //                    len);
 
+        int ret = actual_size;
         if (data->type == TYPE_HEART) {
-            // ignore
+            __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "heart beat recv");
+            *heartbeated = true;
         } else if (data->type == TYPE_REPLY) {
             // send packet to raw network
-            int ret = 0;
-            if ((ret = write(fd, data->data, actual_size)) < actual_size) {
+            if (fd > 0 && // if tun not ready, just drop all packets
+                    (ret = write(fd, data->data, actual_size)) < actual_size) {
                 __android_log_print(ANDROID_LOG_ERROR, "backend thread",
                                     "RAW size = %d err = %d", len, ret);
             }
@@ -60,8 +62,8 @@ void over6Handle(int fd, uint8_t *buffer, int *used) {
             __android_log_print(ANDROID_LOG_WARN, "backend thread", "Not implemented yet\n");
         }
 
-        memmove(buffer, buffer + len, *used - len);
-        *used -= len;
+        memmove(buffer, buffer + ret + sizeof(over6Packet), *used - ret - sizeof(over6Packet));
+        *used -= ret + sizeof(over6Packet);
     }
 }
 
@@ -73,13 +75,13 @@ void rawToOver6(int fd, uint8_t *buffer, int *used) {
     int temp;
     if ((temp = write(fd, &header, sizeof(header))) < sizeof(header)) {
         __android_log_print(ANDROID_LOG_ERROR, "backend thread",
-                            "->O6 size = %d err = %d\n", sizeof(header), temp);
+                            "->O6 size = %ul err = %d\n", sizeof(header), temp);
     }
     if ((temp = write(fd, buffer, *used)) < 0) {
         __android_log_print(ANDROID_LOG_ERROR, "backend thread",
                             "->O6 size = %d err = %d\n", *used, temp);
     }
-    __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "rawToOver6 fd=%d %d\n", fd, *used);
+    //__android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "rawToOver6 fd=%d %d\n", fd, *used);
     memmove(buffer, buffer + temp, *used - temp);
     *used -= temp;
 }
@@ -106,9 +108,9 @@ void communication_handle_tun_read() {
     readToBuf(tunDeviceFd, tunDeviceBuffer, &tunDeviceBufferUsed);
 }
 
-void communication_handle_tun_write() {
+void communication_handle_4over6_packets(bool *heartbeated) {
     // TODO: Add input bytes counter for statistics.
-    over6Handle(tunDeviceFd, over6PacketBuffer, &over6PacketBufferUsed);
+    over6Handle(tunDeviceFd, over6PacketBuffer, &over6PacketBufferUsed, heartbeated);
 }
 
 void communication_handle_4over6_socket_read() {
@@ -123,8 +125,15 @@ void communication_handle_4over6_socket_write() {
     rawToOver6(remoteSocketFd, tunDeviceBuffer, &tunDeviceBufferUsed);
 }
 
-void communication_handle_timer() {
-    // TODO: Send heartbeat packet
+void communication_send_heartbeat() {
+    over6Packet header;
+    header.type = TYPE_HEART;
+    header.length = htonl(sizeof(header));
+    if (write(remoteSocketFd, &header, sizeof(header)) < sizeof(header)) {
+        __android_log_print(ANDROID_LOG_ERROR, "backend thread",
+                            "->O6 failed to send heartbeat");
+    }
+    __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "sent heartbeat\n");
 }
 
 int communication_is_ip_confiugration_recevied() {

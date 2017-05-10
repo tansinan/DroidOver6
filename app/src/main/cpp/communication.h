@@ -41,13 +41,13 @@ void communication_set_tun_fd(int tunFd);
 
 void communication_handle_tun_read();
 
-void communication_handle_tun_write();
+void communication_handle_4over6_packets(bool *heartbeated);
 
 void communication_handle_4over6_socket_read();
 
 void communication_handle_4over6_socket_write();
 
-void communication_handle_timer();
+void communication_send_heartbeat();
 
 int communication_is_ip_confiugration_recevied();
 

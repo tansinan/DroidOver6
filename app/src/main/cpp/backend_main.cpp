@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <android/log.h>
 #include <errno.h>
+#include <time.h>
 
 #include <sys/socket.h>
 #include <sys/epoll.h>
@@ -17,6 +18,7 @@
 
 #include "communication.h"
 #include "frontend_ipc.h"
+#include "backend_main.h"
 
 static int connectTo4Over6Server(const char *hostName, int port) {
     int ret = 0;
@@ -77,6 +79,10 @@ int backend_main(const char *hostName, int port,
                  int commandPipeFd, int responsePipeFd) {
     int tunDeviceFd = -1, remoteSocketFd = -1;
     int epollFd = -1;
+
+    time_t lastHeartBeating, lastHeartBeated;
+    bool needHeartBeat = true;
+
     epoll_event *events = NULL;
     int fds[2];
 
@@ -93,10 +99,22 @@ int backend_main(const char *hostName, int port,
     events = (epoll_event *) calloc(10, sizeof(epoll_event));
     communication_set_status(BACKEND_STATE_CONNECTED);
 
+    lastHeartBeating = lastHeartBeated = time(NULL);
+
     // Event loop
-    // TODO: heartbeat
     for (; ; ) {
-        int eventCount = epoll_wait(epollFd, events, 10, -1);
+        int eventCount = epoll_wait(epollFd, events, 10, TIMER_EXP);
+        int now = time(NULL);
+
+        // handling heart beat timer
+        if (now - lastHeartBeated > HEART_TIMEOUT) {
+            __android_log_print(ANDROID_LOG_VERBOSE, "backend thread",
+                                "server timed out, die\n");
+            goto failed;
+        } else if (now - lastHeartBeating > HEART_INTV) {
+            needHeartBeat = true;
+        }
+
         for (int i = 0; i < eventCount; i++) {
 
             if ((events[i].events & EPOLLERR) ||
@@ -124,9 +142,19 @@ int backend_main(const char *hostName, int port,
 
             if (events[i].events & EPOLLOUT) {
                 if (events[i].data.fd == tunDeviceFd) {
-                    communication_handle_tun_write();
+                    bool heartbeated = false;
+                    communication_handle_4over6_packets(&heartbeated);
+                    if (heartbeated) {
+                        lastHeartBeated = now;
+                    }
                 } else if (events[i].data.fd == remoteSocketFd) {
-                    communication_handle_4over6_socket_write();
+                    if (needHeartBeat) {
+                        communication_send_heartbeat();
+                        lastHeartBeating = now;
+                        needHeartBeat = false;
+                    } else {
+                        communication_handle_4over6_socket_write();
+                    }
                 }
             }
         }
@@ -136,7 +164,7 @@ int backend_main(const char *hostName, int port,
         if (tunDeviceFd != -1) {
             event.data.fd = tunDeviceFd;
             event.events = EPOLLIN | EPOLLERR | EPOLLHUP;
-            if (over6PacketBufferUsed > 0)
+            if (over6PacketBufferUsed > 0 || needHeartBeat)
                 event.events |= EPOLLOUT;
             epoll_ctl(epollFd, EPOLL_CTL_MOD, tunDeviceFd, &event);
         }
@@ -152,8 +180,9 @@ failed:
     if (tunDeviceFd >= 0) close(tunDeviceFd);
     if (commandPipeFd >= 0) close(commandPipeFd);
     communication_set_status(BACKEND_STATE_DISCONNECTED);
+    // TODO: frontend not updated when disconnected
 
     __android_log_print(ANDROID_LOG_VERBOSE,
-                        "4over6 backend", "Leaving backend_main", hostName, port);
+                        "4over6 backend", "Leaving backend_main");
     return 0;
 }
