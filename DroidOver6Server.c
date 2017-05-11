@@ -152,7 +152,7 @@ static void rawToOver6(int fd, uint8_t *buffer, int *used, int *remain) {
         }
         (*remain) = transf - temp;
     } else {
-        temp = write(fd, buffer, transf);
+        temp = write(fd, buffer, *remain);
         (*remain) -= temp;
     }
     printf(" [%lu] ", temp + sizeof(header));
@@ -291,7 +291,7 @@ int main(int argc, char *argv[]) {
             }
         }
         
-        if (time(NULL) - last_heartbeat > 20) {
+        if (time(NULL) - last_heartbeat > 20 && ipBufferRemain == 0) {
             over6Packet header;
             header.type = TYPE_HEART;
             header.length = endian_local_to_little_32(sizeof(header));
@@ -308,7 +308,7 @@ int main(int argc, char *argv[]) {
         if (tun_dev_fd != -1) {
             event.data.fd = tun_dev_fd;
             event.events = EPOLLIN | EPOLLERR | EPOLLHUP;
-            if (over6PacketBufferUsed > 0 || (time(NULL) - last_heartbeat > 20))
+            if (over6PacketBufferUsed > 0)
                 event.events |= EPOLLOUT;
             epoll_ctl(epollFd, EPOLL_CTL_MOD, tun_dev_fd, &event);
         }
