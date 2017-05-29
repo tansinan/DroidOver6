@@ -38,6 +38,7 @@ public class Over6VpnService extends VpnService {
     protected static final String IPV6_NONE = "2001:db8:ffff:ffff:ffff:ffff:ffff:ffff";
 
     public static final String BROADCAST_VPN_STATE = "com.tinytangent.droidover6.STATUS_CHANGED";
+    public static final String BROADCAST_VPN_IP = "com.tinytangent.droidover6.IP_CONFIG";
     public static final String BROADCAST_VPN_TRAFFIC = "com.tinytangent.droidover6.TRAFFIC_STATISTICS";
 
     ParcelFileDescriptor commandReadFd;
@@ -58,22 +59,29 @@ public class Over6VpnService extends VpnService {
 
     static protected Over6VpnService instance = null;
 
+    long lastInBytes = 0;
+    long lastOutBytes = 0;
+    int duration = 0;
+
     static Over6VpnService getInstance() {
         return instance;
     }
 
-    static byte[] readExactBytes(FileInputStream stream, int bytes) throws IOException {
+    byte[] readExactBytes(FileInputStream stream, int bytes) throws IOException {
         byte[] ret = new byte[bytes];
         int bytesRead = 0;
         while (bytesRead < ret.length) {
             int temp = stream.read(ret, bytesRead, ret.length - bytesRead);
             if (temp > 0) bytesRead += temp;
+            if(!backendThread.isAlive())
+                break;
         }
         return ret;
     }
 
     @Override
     public void onCreate() {
+        Log.d("Over6VPNService", "Entering Over6VPNService：：::onCreate()");
         instance = this;
         try {
             ParcelFileDescriptor[] pipeFds = ParcelFileDescriptor.createPipe();
@@ -88,6 +96,7 @@ public class Over6VpnService extends VpnService {
         } catch (IOException e) {
             return;
         }
+        Log.d("Over6VPNService", "Leaving Over6VPNService：：::onCreate()");
     }
 
     @Override
@@ -109,19 +118,21 @@ public class Over6VpnService extends VpnService {
         Log.d("Backend", "Backend started!");
 
         TimerTask timer_task = new TimerTask() {
-            int i = 0;
-
             public void run() {
+                duration++;
                 if (!backendThread.isAlive()) {
                     Intent intent = new Intent(BROADCAST_VPN_STATE);
                     intent.putExtra("status_code", BackendIPC.BACKEND_STATE_DISCONNECTED);
                     LocalBroadcastManager.getInstance(Over6VpnService.this).sendBroadcast(intent);
+                    this.cancel();
                     Over6VpnService.this.reliableStop();
                     return;
                 } else if (vpnInterface == null) {
                     try {
                         commandStream.write(BACKEND_IPC_COMMAND_CONFIGURATION);
                         byte[] data = readExactBytes(responseStream, 20);
+                        if (!backendThread.isAlive())
+                            return;
                         InetAddress address = InetAddress.getByAddress(Arrays.copyOfRange(data, 0, 4));
                         InetAddress dns = InetAddress.getByAddress(Arrays.copyOfRange(data, 8, 12));
                         InetAddress dns2 = InetAddress.getByAddress(Arrays.copyOfRange(data, 12, 16));
@@ -143,6 +154,10 @@ public class Over6VpnService extends VpnService {
                                 .establish();
                         commandStream.write(BACKEND_IPC_COMMAND_SET_TUNNEL_FD);
                         commandStream.write(ByteBuffer.allocate(4).putInt(vpnInterface.getFd()).array());
+                        Intent intent = new Intent(BROADCAST_VPN_IP);
+                        intent.putExtra("ip", address.getHostAddress());
+                        Log.d("Over6VPNService", "__Address!!__" + address.getHostAddress());
+                        LocalBroadcastManager.getInstance(Over6VpnService.this).sendBroadcast(intent);
                     } catch (IOException e) {
                         Log.d("DroidOver6 VPN", "IO error");
                         return;
@@ -160,6 +175,7 @@ public class Over6VpnService extends VpnService {
                         intent.putExtra("status_code", response);
                         if (response == BackendIPC.BACKEND_STATE_DISCONNECTED) {
                             LocalBroadcastManager.getInstance(Over6VpnService.this).sendBroadcast(intent);
+                            this.cancel();
                             Over6VpnService.this.reliableStop();
                             return;
                         }
@@ -167,12 +183,32 @@ public class Over6VpnService extends VpnService {
                         commandStream.flush();
                         byte[] inBytes = readExactBytes(responseStream, Long.SIZE / 8);
                         byte[] outBytes = readExactBytes(responseStream, Long.SIZE / 8);
+                        if (!backendThread.isAlive())
+                            return;
                         ByteBuffer buffer = ByteBuffer.allocate(Long.SIZE / 8).put(inBytes);
                         buffer.flip();
-                        intent.putExtra("in_bytes", buffer.getLong());
+                        long inBytesVal = buffer.getLong();
+                        intent.putExtra("in_bytes", inBytesVal);
                         buffer = ByteBuffer.allocate(Long.SIZE / 8).put(outBytes);
                         buffer.flip();
-                        intent.putExtra("out_bytes", buffer.getLong());
+                        long outBytesVal = buffer.getLong();
+                        intent.putExtra("out_bytes", outBytesVal);
+                        long inSpeed = inBytesVal - lastInBytes;
+                        long outSpeed = outBytesVal - lastOutBytes;
+                        byte[] inPackets = readExactBytes(responseStream, Integer.SIZE / 8);
+                        buffer = ByteBuffer.allocate(Integer.SIZE / 8).put(inPackets);
+                        buffer.flip();
+                        intent.putExtra("in_packets", buffer.getInt());
+                        byte[] outPackets = readExactBytes(responseStream, Integer.SIZE / 8);
+                        buffer = ByteBuffer.allocate(Integer.SIZE / 8).put(outPackets);
+                        buffer.flip();
+                        intent.putExtra("out_packets", buffer.getInt());
+                        intent.putExtra("out_bytes", outBytesVal);
+                        intent.putExtra("in_speed", inSpeed);
+                        intent.putExtra("out_speed", outSpeed);
+                        intent.putExtra("duration", duration);
+                        lastInBytes = inBytesVal;
+                        lastOutBytes = outBytesVal;
                         LocalBroadcastManager.getInstance(Over6VpnService.this).sendBroadcast(intent);
                     } catch (Exception e) {
                         return;

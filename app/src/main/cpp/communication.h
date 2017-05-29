@@ -24,6 +24,10 @@ const static uint8_t TYPE_REQUEST = 102;
 const static uint8_t TYPE_REPLY   = 103;
 const static uint8_t TYPE_HEART   = 104;
 
+extern uint32_t inPackets;
+extern uint32_t outPackets;
+extern int tunDeviceBufferRemain;
+
 typedef struct {
     uint32_t length;
     uint8_t type;

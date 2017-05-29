@@ -23,11 +23,16 @@ int handle_frontend_command(int commandPipeFd, int responsePipeFd) {
         write(responsePipeFd, &status, 1);
     } else if (command == BACKEND_IPC_COMMAND_STATISTICS) {
         uint64_t inBytes, outBytes;
+        uint32_t inPacketsSend, outPacketsSend;
         communication_get_statistics(&inBytes, &outBytes);
-        inBytes = ntohq(inBytes);
-        outBytes = ntohq(outBytes);
+        inBytes = htonq(inBytes);
+        outBytes = htonq(outBytes);
+        inPacketsSend = htonl(inPackets);
+        outPacketsSend = htonl(outPackets);
         write(responsePipeFd, &inBytes, sizeof(inBytes));
         write(responsePipeFd, &outBytes, sizeof(outBytes));
+        write(responsePipeFd, &inPacketsSend, sizeof(inPacketsSend));
+        write(responsePipeFd, &outPacketsSend, sizeof(outPacketsSend));
     } else if (command == BACKEND_IPC_COMMAND_CONFIGURATION) {
         if (!communication_is_ip_confiugration_recevied()) {
             communication_get_ip_confiugration();

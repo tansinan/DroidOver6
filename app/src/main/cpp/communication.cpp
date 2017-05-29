@@ -21,6 +21,8 @@ static int currentStatus = BACKEND_STATE_CONNECTING;
 
 static uint64_t totalInBytes = 0;
 static uint64_t totalOutBytes = 0;
+uint32_t inPackets = 0;
+uint32_t outPackets = 0;
 
 uint8_t comm_ip[4];
 uint8_t comm_mask[4];
@@ -34,6 +36,9 @@ static int readToBuf(int fd, uint8_t *buffer, int *used) {
     while ((*used) < PIPE_BUF_LEN - READ_SIZE) {
         ret = read(fd, buffer + *used, READ_SIZE);
         if (ret <= 0) break;
+        if(fd == tunDeviceFd) {
+            outPackets += 1;
+        }
         (*used) += ret;
         total += ret;
     }
@@ -93,6 +98,7 @@ void over6Handle(int fd, uint8_t *buffer, int *used, bool *heartbeated) {
             }
             if (ret >= 0 && fd == tunDeviceFd) {
                 totalInBytes += ret;
+                inPackets += 1;
             }
         } else if (data->type == TYPE_IP_REPLY) {
             __android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "ip conf recv");
@@ -120,7 +126,7 @@ void over6Handle(int fd, uint8_t *buffer, int *used, bool *heartbeated) {
     }
 }
 
-static void rawToOver6(int fd, uint8_t *buffer, int *used, int *remain) {
+void rawToOver6(int fd, uint8_t *buffer, int *used, int *remain) {
     if (!*used) return;  // no data
     int transf = *used;
     over6Packet header;
@@ -138,7 +144,7 @@ static void rawToOver6(int fd, uint8_t *buffer, int *used, int *remain) {
         }
         (*remain) = transf - temp;
     } else {
-        temp = write(fd, buffer, transf);
+        temp = write(fd, buffer, *remain);
         (*remain) -= temp;
     }
     //__android_log_print(ANDROID_LOG_VERBOSE, "backend thread", "rawToOver6 fd=%d %d\n", fd, *used);
@@ -157,6 +163,8 @@ void communication_init(int _remoteSocketFd) {
     over6PacketBufferUsed = 0;
     totalInBytes = 0;
     totalOutBytes = 0;
+    inPackets = 0;
+    outPackets = 0;
     memset(comm_ip, 255U, 4);
     memset(comm_mask, 255U, 4);
     memset(comm_dns1, 255U, 4);

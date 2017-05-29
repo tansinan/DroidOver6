@@ -144,7 +144,7 @@ int backend_main(const char *hostName, int port,
                 if (events[i].data.fd == tunDeviceFd) {
                     // ignore
                 } else if (events[i].data.fd == remoteSocketFd) {
-                    if (needHeartBeat) {
+                    if (needHeartBeat && tunDeviceBufferRemain == 0) {
                         communication_send_heartbeat();
                         lastHeartBeating = now;
                         needHeartBeat = false;

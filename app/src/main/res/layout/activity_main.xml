@@ -85,6 +85,77 @@
             android:textAppearance="@style/TextAppearance.AppCompat.Medium" />
     </LinearLayout>
 
+
+    <LinearLayout
+        android:id="@+id/linear_layout_network_speed"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="10dp">
+
+        <TextView
+            android:id="@+id/text_view_out_speed"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_weight="0.5"
+            android:text="Upload"
+            android:textAppearance="@style/TextAppearance.AppCompat.Medium" />
+
+        <TextView
+            android:id="@+id/text_view_in_speed"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_weight="0.5"
+            android:text="Download"
+            android:textAppearance="@style/TextAppearance.AppCompat.Medium" />
+    </LinearLayout>
+
+
+    <LinearLayout
+        android:id="@+id/linear_layout_network_packet"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="10dp">
+
+        <TextView
+            android:id="@+id/text_view_out_packet"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_weight="0.5"
+            android:text="Upload"
+            android:textAppearance="@style/TextAppearance.AppCompat.Medium" />
+
+        <TextView
+            android:id="@+id/text_view_in_packet"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_weight="0.5"
+            android:text="Download"
+            android:textAppearance="@style/TextAppearance.AppCompat.Medium" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/text_view_vpn_ip_v4"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="VPN IPv4"
+        android:textAppearance="@style/TextAppearance.AppCompat.Medium" />
+
+    <TextView
+        android:id="@+id/text_view_local_ip_v6"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Local IPv6"
+        android:textAppearance="@style/TextAppearance.AppCompat.Medium" />
+
+    <TextView
+        android:id="@+id/text_view_duration"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Duration"
+        android:textAppearance="@style/TextAppearance.AppCompat.Medium" />
+
     <Button
         android:id="@+id/button_change_connection_state"
         style="@style/Widget.AppCompat.Button.Colored"
