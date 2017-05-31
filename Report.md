@@ -398,17 +398,17 @@ Android前端包括一个活动（Activity），用于呈现图形界面，以�
 
 VPN服务启动前：
 
-![VPN服务启动前截图](https://github.com/tansinan/DroidOver6/blob/master/doc/screenshot_idle.png)
+<img src="https://github.com/tansinan/DroidOver6/blob/master/doc/screenshot_idle.png" width="50%" />
 
 VPN服务运行中：
 
-![VPN服务运行中截图](https://github.com/tansinan/DroidOver6/blob/master/doc/screenshot_running.png)
+<img src="https://github.com/tansinan/DroidOver6/blob/master/doc/screenshot_running.png" width="50%" />
 
 #### 正常上网
 
 新浪的花边新闻：
 
-![新浪的花边新闻](https://github.com/tansinan/DroidOver6/blob/master/doc/screenshot_sina.png)
+<img src="https://github.com/tansinan/DroidOver6/blob/master/doc/screenshot_sina.png" width="50%" />
 
 通过Bilibili观看动画：
 
