@@ -396,11 +396,23 @@ Android前端包括一个活动（Activity），用于呈现图形界面，以�
 
 #### 前端界面
 
-TODO：前端运行截图，开始前、开始后
+VPN服务启动前：
+
+![VPN服务启动前截图](https://github.com/tansinan/DroidOver6/blob/master/doc/screenshot_idle.png)
+
+VPN服务运行中：
+
+![VPN服务运行中截图](https://github.com/tansinan/DroidOver6/blob/master/doc/screenshot_running.png)
 
 #### 正常上网
 
-TODO：截个 especially 图就好了
+新浪的花边新闻：
+
+![新浪的花边新闻](https://github.com/tansinan/DroidOver6/blob/master/doc/screenshot_sina.png)
+
+通过Bilibili观看动画：
+
+![通过Bilibili观看动画](https://github.com/tansinan/DroidOver6/blob/master/doc/screenshot_bilibili.png)
 
 ### 测试结果
 
